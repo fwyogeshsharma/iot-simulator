@@ -1,0 +1,32 @@
+server:
+  port: 8080
+
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:iotdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driverClassName: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+logging:
+  level:
+    com.example.iotsimulatorbackend: DEBUG
+
+
+supabase:
+  profiles-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/profiles
+  devices-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/devices
+  device-data-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_data
+  device-type-data-configs-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_type_data_configs
+  device-types-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_types
+  elderly-persons-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/elderly_persons
+  apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpeWZjdnlwZWlmYmRhcW5mZ3JyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTgwMTI0NiwiZXhwIjoyMDc1Mzc3MjQ2fQ.aLEfYBHEgtrjH_99iwriFQTw4pMX5Up7zLq5Bxk0fhs
+
+
+simulator:
+  device-ingest-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/functions/v1/device-ingest

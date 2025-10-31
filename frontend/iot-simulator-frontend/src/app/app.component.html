@@ -1,0 +1,99 @@
+<div class="container">
+  <h1>🏥 IoT Elderly Care Data Simulator</h1>
+
+  <!-- Step Indicator -->
+  <div class="step-indicator">
+    <div class="step" [class.active]="!!selectedProfile" [class.completed]="!!selectedProfile">
+      <div class="step-number">1</div>
+      <div class="step-label">Select Person</div>
+    </div>
+    <div class="step" [class.active]="devices.length > 0" [class.completed]="devices.length > 0">
+      <div class="step-number">2</div>
+      <div class="step-label">Select Devices</div>
+    </div>
+    <div class="step" [class.active]="isSimulating" [class.completed]="isSimulating">
+      <div class="step-number">3</div>
+      <div class="step-label">Simulate</div>
+    </div>
+  </div>
+
+  <form>
+    <!-- Step 1: Select Elderly Person -->
+    <div class="form-section">
+      <label>👤 Select Elderly Person:</label>
+      <select [(ngModel)]="selectedProfile" name="profile" (change)="onProfileChange()" [disabled]="isSimulating">
+        <option value="">-- Choose a person --</option>
+        <option *ngFor="let p of profiles" [ngValue]="p">{{p.full_name}} ({{p.email}})</option>
+      </select>
+    </div>
+
+    <!-- Step 2: Select Devices (Multi-select with checkboxes) -->
+    <div class="form-section" *ngIf="selectedProfile && devices.length > 0">
+      <label>📱 Select Devices (Optional - leave empty to simulate all):</label>
+      <div class="device-list">
+        <div *ngFor="let device of devices" class="device-item">
+          <input
+            type="checkbox"
+            [id]="'device-' + device.id"
+            [checked]="isDeviceSelected(device.id)"
+            (change)="toggleDeviceSelection(device.id)"
+            [disabled]="isSimulating"
+          />
+          <label [for]="'device-' + device.id">
+            {{device.deviceName}} <span class="device-id">({{device.deviceId}})</span>
+          </label>
+        </div>
+      </div>
+      <p class="help-text">
+        Selected: {{selectedDeviceIds.size}} of {{devices.length}} devices
+        <span *ngIf="selectedDeviceIds.size === 0">(Will use all {{devices.length}} devices)</span>
+      </p>
+    </div>
+
+    <!-- No Devices Message -->
+    <div class="form-section info-message" *ngIf="selectedProfile && devices.length === 0">
+      <p>No devices found for this elderly person. Please select another person or add devices first.</p>
+    </div>
+
+    <!-- Simulation Controls -->
+    <div class="button-group" *ngIf="selectedProfile && devices.length > 0">
+      <button
+        type="button"
+        (click)="startSimulation()"
+        [disabled]="isSimulating"
+        class="start-btn"
+      >
+        ▶️ Start Simulation
+      </button>
+      <button
+        type="button"
+        (click)="stopSimulation()"
+        [disabled]="!isSimulating"
+        class="stop-btn"
+      >
+        ⏹️ Stop Simulation
+      </button>
+      <button type="button" (click)="resetSettings()" class="reset-btn">
+        🔄 Reset
+      </button>
+    </div>
+
+    <!-- Simulation Status -->
+    <div class="simulation-status" *ngIf="isSimulating">
+      <div class="status-indicator">
+        <div class="pulse"></div>
+        <span>Simulation Running</span>
+      </div>
+      <p class="status-details">
+        Generating data for {{selectedDeviceIds.size || devices.length}} device(s)
+        <br />
+        Each device will generate data at its configured frequency
+      </p>
+    </div>
+  </form>
+
+  <!-- Messages -->
+  <div *ngIf="message" class="message" [class.success]="message.includes('successfully')" [class.error]="message.includes('Error')">
+    {{message}}
+  </div>
+</div>
