@@ -1,6 +1,6 @@
 # IoT Device Simulator
 
-A comprehensive IoT device simulator system with both backend (Java/Spring Boot) and frontend (React) components. This simulator generates realistic IoT sensor data and provides a dashboard to visualize and manage the simulations.
+A comprehensive IoT device simulator system with both backend (Java/Spring Boot) and frontend (Angular) components. This simulator generates realistic IoT sensor data and provides a dashboard to visualize and manage the simulations.
 
 ## Project Structure
 
@@ -10,7 +10,7 @@ iot-simulator/
 │   ├── src/
 │   ├── pom.xml
 │   └── mvnw
-├── frontend/             # React frontend
+├── frontend/             # Angular frontend
 │   ├── iot-simulator-frontend/
 │   └── package.json
 ├── README.md
@@ -42,7 +42,7 @@ mvn spring-boot:run
 
 The backend will start on `http://localhost:8080`
 
-## Frontend - Simulator Dashboard (React)
+## Frontend - Simulator Dashboard (Angular)
 
 Located in `/frontend`
 
@@ -64,7 +64,7 @@ npm install
 npm start
 ```
 
-The frontend will start on `http://localhost:3000`
+The frontend will start on `http://localhost:4200` (default Angular port)
 
 ## API Documentation
 
