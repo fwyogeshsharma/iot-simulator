@@ -1,5 +1,5 @@
 <div class="container">
-  <h1>🏥 IoT Elderly Care Data Simulator</h1>
+  <h1>🏥 SymBIOT Simulator</h1>
 
   <!-- Step Indicator -->
   <div class="step-indicator">
@@ -29,7 +29,7 @@
 
     <!-- Step 2: Select Devices (Multi-select with checkboxes) -->
     <div class="form-section" *ngIf="selectedProfile && devices.length > 0">
-      <label>📱 Select Devices (Optional - leave empty to simulate all):</label>
+      <label>📱 Select Devices (All selected by default):</label>
       <div class="device-list">
         <div *ngFor="let device of devices" class="device-item">
           <input
@@ -40,7 +40,9 @@
             [disabled]="isSimulating"
           />
           <label [for]="'device-' + device.id">
-            {{device.deviceName}} <span class="device-id">({{device.deviceId}})</span>
+            {{device.deviceName}}
+            <span *ngIf="device.description" class="device-description">({{device.description}})</span>
+            <span class="device-id">({{device.deviceId}})</span>
           </label>
         </div>
       </div>

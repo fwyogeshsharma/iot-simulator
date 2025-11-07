@@ -109,14 +109,35 @@ public class SimulatorService {
             ResponseEntity<String> devicesResponse = restTemplate.exchange(devicesQueryUrl, HttpMethod.GET, entity, String.class);
             JsonNode jsonArray = objectMapper.readTree(devicesResponse.getBody());
 
+            // Fetch device types for description mapping
+            String allDeviceTypesUrl = deviceTypesUrl + "?select=code,name,description";
+            ResponseEntity<String> deviceTypesResponse = restTemplate.exchange(allDeviceTypesUrl, HttpMethod.GET, entity, String.class);
+            JsonNode deviceTypesArray = objectMapper.readTree(deviceTypesResponse.getBody());
+
+            Map<String, String> deviceTypeDescriptions = new HashMap<>();
+            for (JsonNode typeNode : deviceTypesArray) {
+                String code = typeNode.get("code").asText();
+                String description = typeNode.has("description") && !typeNode.get("description").isNull()
+                    ? typeNode.get("description").asText()
+                    : "";
+                deviceTypeDescriptions.put(code, description);
+            }
+
             List<Device> devices = new ArrayList<>();
             for (JsonNode deviceNode : jsonArray) {
+                String deviceTypeCode = deviceNode.has("device_type") && !deviceNode.get("device_type").isNull()
+                    ? deviceNode.get("device_type").asText()
+                    : "";
+                String description = deviceTypeDescriptions.getOrDefault(deviceTypeCode, "");
+
                 Device device = new Device(
                     deviceNode.get("id").asText(),
                     deviceNode.get("elderly_person_id").asText(),
                     deviceNode.get("device_name").asText(),
                     deviceNode.get("device_id").asText(),
-                    deviceNode.get("api_key").asText()
+                    deviceNode.get("api_key").asText(),
+                    deviceTypeCode,
+                    description
                 );
                 devices.add(device);
             }

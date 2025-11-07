@@ -292,6 +292,7 @@ button:disabled {
   padding: 16px;
   background: #f9f9f9;
   border-radius: 8px;
+  max-width: 100%;
 }
 
 .device-item {
@@ -313,13 +314,26 @@ button:disabled {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  flex-wrap: wrap;
+  line-height: 1.4;
+  font-size: 14px;
+}
+
+.device-description {
+  color: #888;
+  font-size: 12px;
+  font-weight: normal;
+  display: inline;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .device-id {
   color: #999;
   font-size: 12px;
   font-weight: normal;
+  white-space: nowrap;
 }
 
 .help-text {
@@ -449,11 +463,20 @@ button:disabled {
   }
 
   .device-item label {
-    flex-direction: column;
+    flex-wrap: wrap;
     align-items: flex-start;
+    gap: 2px;
+  }
+
+  .device-description {
+    width: 100%;
+    padding-left: 28px;
+    margin-top: 2px;
   }
 
   .device-id {
+    width: 100%;
     margin-left: 28px;
+    margin-top: 2px;
   }
 }

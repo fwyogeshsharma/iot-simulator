@@ -13,6 +13,8 @@ interface Device {
   deviceName: string;
   deviceId: string;
   apiKey: string;
+  deviceType?: string;
+  description?: string;
 }
 
 interface SimulationResponse {
@@ -89,8 +91,11 @@ export class AppComponent implements OnInit, OnDestroy {
         console.log('Devices loaded:', data);
         this.devices = data || [];
 
-        // Restore previously selected devices from settings
-        if (this.settings && this.settings.selectedDeviceIds) {
+        // Select all devices by default
+        this.selectedDeviceIds = new Set(this.devices.map(d => d.id));
+
+        // Restore previously selected devices from settings if available
+        if (this.settings && this.settings.selectedDeviceIds && this.settings.selectedDeviceIds.length > 0) {
           this.selectedDeviceIds = new Set(this.settings.selectedDeviceIds);
         }
       },
