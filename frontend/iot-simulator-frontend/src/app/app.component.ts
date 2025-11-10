@@ -107,9 +107,18 @@ export class AppComponent implements OnInit, OnDestroy {
 
   onProfileChange() {
     if (!this.selectedProfile) return;
-    const devicesUrl = `${environment.backendUrl}/devices/${this.selectedProfile.id}`;
+
+    // Call Supabase directly with filter for elderly_person_id
+    const devicesUrl = `${environment.devicesUrl}?elderly_person_id=eq.${this.selectedProfile.id}`;
     console.log('Loading devices from:', devicesUrl);
-    this.http.get<Device[]>(devicesUrl).subscribe({
+
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${environment.profilesApiKey}`,
+      'Content-Type': 'application/json',
+      'apikey': environment.profilesApiKey
+    });
+
+    this.http.get<Device[]>(devicesUrl, { headers }).subscribe({
       next: (data) => {
         console.log('Devices loaded:', data);
         this.devices = data || [];
