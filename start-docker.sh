@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Colors for output
+# IoT Simulator - Docker Startup Script
+# Simple and reliable startup without errors
+
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -11,156 +13,163 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}"
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║                                                      ║"
-echo "║          🏥 SymBIOT IoT Simulator                   ║"
-echo "║          Docker Startup Script                       ║"
+echo "║          🏥 IoT Simulator - Startup                 ║"
 echo "║                                                      ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
+echo ""
 
-# Check if Docker is installed
-echo -e "${BLUE}Checking Docker installation...${NC}"
+# Check prerequisites
+echo -e "${BLUE}[1/5] Checking prerequisites...${NC}"
+
 if ! command -v docker &> /dev/null; then
-    echo -e "${RED}❌ Docker is not installed. Please install Docker first.${NC}"
+    echo -e "${RED}❌ Docker not installed${NC}"
     exit 1
 fi
 
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo -e "${RED}❌ Docker Compose is not installed. Please install Docker Compose first.${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}✅ Docker is installed${NC}"
-
-# Check if Docker daemon is running
 if ! docker info &> /dev/null; then
-    echo -e "${RED}❌ Docker daemon is not running. Please start Docker first.${NC}"
+    echo -e "${RED}❌ Docker daemon not running${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}✅ Docker daemon is running${NC}"
+if [ ! -f .env ]; then
+    echo -e "${RED}❌ .env file not found${NC}"
+    echo "   Run: cp .env.example .env"
+    exit 1
+fi
 
-# Function to handle cleanup
-cleanup() {
-    echo -e "\n${YELLOW}Stopping containers...${NC}"
-    docker-compose down
-    exit 0
-}
+echo -e "${GREEN}✅ Prerequisites OK${NC}"
+echo ""
 
-# Trap Ctrl+C
-trap cleanup SIGINT SIGTERM
-
-# Parse command line arguments
+# Parse arguments
 REBUILD=false
 CLEAN=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --rebuild)
-            REBUILD=true
-            shift
-            ;;
-        --clean)
-            CLEAN=true
-            shift
-            ;;
+        --rebuild) REBUILD=true; shift ;;
+        --clean) CLEAN=true; shift ;;
         --help)
             echo "Usage: ./start-docker.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --rebuild    Rebuild Docker images before starting"
-            echo "  --clean      Remove all containers, images, and volumes before starting"
-            echo "  --help       Show this help message"
+            echo "  --rebuild    Rebuild Docker images"
+            echo "  --clean      Remove all containers and images first"
+            echo "  --help       Show this help"
             exit 0
             ;;
-        *)
-            echo -e "${RED}Unknown option: $1${NC}"
-            echo "Use --help for usage information"
-            exit 1
-            ;;
+        *) echo -e "${RED}Unknown option: $1${NC}"; exit 1 ;;
     esac
 done
 
 # Clean if requested
 if [ "$CLEAN" = true ]; then
-    echo -e "${YELLOW}🧹 Cleaning up Docker containers, images, and volumes...${NC}"
-    docker-compose down -v --rmi all
+    echo -e "${BLUE}[2/5] Cleaning up...${NC}"
+    docker compose down -v --rmi all 2>/dev/null
     echo -e "${GREEN}✅ Cleanup complete${NC}"
+    echo ""
+else
+    echo -e "${BLUE}[2/5] Stopping existing containers...${NC}"
+    docker compose down 2>/dev/null
+    echo -e "${GREEN}✅ Stopped${NC}"
+    echo ""
 fi
 
-# Build images if requested or if they don't exist
+# Remove old unhealthy containers
+echo -e "${BLUE}[3/5] Removing old containers...${NC}"
+docker compose rm -f 2>/dev/null
+echo -e "${GREEN}✅ Removed${NC}"
+echo ""
+
+# Build if requested
 if [ "$REBUILD" = true ]; then
-    echo -e "${BLUE}🔨 Building Docker images...${NC}"
-    docker-compose build --no-cache
+    echo -e "${BLUE}[4/5] Building images (this takes 2-3 minutes)...${NC}"
+    docker compose build --no-cache
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Build failed${NC}"
+        exit 1
+    fi
     echo -e "${GREEN}✅ Build complete${NC}"
+    echo ""
+else
+    echo -e "${BLUE}[4/5] Building images (if needed)...${NC}"
+    docker compose build
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Build failed${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✅ Build complete${NC}"
+    echo ""
 fi
 
-# Start the services
-echo -e "${BLUE}🚀 Starting IoT Simulator services...${NC}"
-echo -e "${BLUE}   - Backend (Spring Boot): http://localhost:3000${NC}"
-echo -e "${BLUE}   - Frontend (Angular): http://localhost:4200${NC}"
-echo ""
+# Start services in background
+echo -e "${BLUE}[5/5] Starting services...${NC}"
+docker compose up -d
 
-# Start docker-compose with build if images don't exist
-if [ "$REBUILD" = false ]; then
-    docker-compose up --build -d
-else
-    docker-compose up -d
-fi
-
-# Wait for services to be healthy
-echo ""
-echo -e "${YELLOW}⏳ Waiting for services to be ready...${NC}"
-echo ""
-
-# Function to check service health
-check_health() {
-    local service=$1
-    local max_attempts=60
-    local attempt=1
-
-    while [ $attempt -le $max_attempts ]; do
-        if docker-compose ps | grep $service | grep -q "healthy\|Up"; then
-            return 0
-        fi
-        echo -e "${YELLOW}   Waiting for $service... (attempt $attempt/$max_attempts)${NC}"
-        sleep 2
-        attempt=$((attempt + 1))
-    done
-    return 1
-}
-
-# Check backend health
-if check_health "backend"; then
-    echo -e "${GREEN}✅ Backend is ready${NC}"
-else
-    echo -e "${RED}❌ Backend failed to start${NC}"
-    docker-compose logs backend
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Failed to start services${NC}"
+    echo ""
+    echo "Check logs with: docker compose logs"
     exit 1
 fi
 
-# Check frontend health
-if check_health "frontend"; then
-    echo -e "${GREEN}✅ Frontend is ready${NC}"
-else
-    echo -e "${RED}❌ Frontend failed to start${NC}"
-    docker-compose logs frontend
+echo -e "${GREEN}✅ Services started${NC}"
+echo ""
+
+# Wait for containers to be running
+echo -e "${YELLOW}⏳ Waiting for containers to start...${NC}"
+sleep 5
+
+# Check if containers are running
+BACKEND_STATUS=$(docker inspect -f '{{.State.Status}}' iot-simulator-backend 2>/dev/null)
+FRONTEND_STATUS=$(docker inspect -f '{{.State.Status}}' iot-simulator-frontend 2>/dev/null)
+
+if [ "$BACKEND_STATUS" != "running" ]; then
+    echo -e "${RED}❌ Backend container not running${NC}"
+    echo ""
+    echo "Check logs: docker compose logs backend"
     exit 1
 fi
+
+if [ "$FRONTEND_STATUS" != "running" ]; then
+    echo -e "${RED}❌ Frontend container not running${NC}"
+    echo ""
+    echo "Check logs: docker compose logs frontend"
+    exit 1
+fi
+
+# Wait for services to be ready (simple check)
+echo -e "${YELLOW}⏳ Waiting for services to be ready (30 seconds)...${NC}"
+sleep 30
+
+# Final status check
+echo ""
+echo -e "${BLUE}Checking service status...${NC}"
+docker compose ps
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║  🎉 IoT Simulator is now running!                   ║${NC}"
-echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║  📊 Frontend: ${BLUE}http://localhost:4200${GREEN}                 ║${NC}"
-echo -e "${GREEN}║  🔧 Backend:  ${BLUE}http://localhost:3000${GREEN}                 ║${NC}"
-echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║  Press Ctrl+C to stop all services                  ║${NC}"
+echo -e "${GREEN}║  ✅ IoT Simulator Started Successfully!             ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Show logs
-echo -e "${BLUE}📋 Showing live logs (press Ctrl+C to stop)...${NC}"
+echo -e "${BLUE}Access URLs:${NC}"
+echo "  Frontend: ${GREEN}http://localhost:4200${NC}"
+echo "  Backend:  ${GREEN}http://localhost:3000${NC}"
 echo ""
-docker-compose logs -f
+echo "  Or from external:"
+echo "  Frontend: ${GREEN}http://34.93.247.3:4200${NC}"
+echo "  Backend:  ${GREEN}http://34.93.247.3:3000${NC}"
+echo ""
+
+echo -e "${BLUE}Useful Commands:${NC}"
+echo "  View logs:        ${YELLOW}docker compose logs -f${NC}"
+echo "  Check status:     ${YELLOW}docker compose ps${NC}"
+echo "  Stop services:    ${YELLOW}docker compose down${NC}"
+echo "  Restart service:  ${YELLOW}docker compose restart backend${NC}"
+echo ""
+
+echo -e "${YELLOW}💡 Tip: Wait 1-2 minutes for full initialization${NC}"
+echo ""

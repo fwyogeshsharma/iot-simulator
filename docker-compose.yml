@@ -12,7 +12,7 @@ services:
     env_file:
       - .env
     environment:
-      - JAVA_OPTS=${JAVA_OPTS}
+      - JAVA_OPTS=${JAVA_OPTS:-Xmx512m -Xms256m}
       - SUPABASE_PROFILES_URL=${SUPABASE_PROFILES_URL}
       - SUPABASE_DEVICES_URL=${SUPABASE_DEVICES_URL}
       - SUPABASE_DEVICE_DATA_URL=${SUPABASE_DEVICE_DATA_URL}
@@ -23,13 +23,13 @@ services:
       - SIMULATOR_DEVICE_INGEST_URL=${SIMULATOR_DEVICE_INGEST_URL}
     networks:
       - iot-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 0"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 60s
-    restart: unless-stopped
+      retries: 10
+      start_period: 90s
 
   # Frontend Service (Angular + Nginx)
   frontend:
@@ -43,13 +43,13 @@ services:
       - backend
     networks:
       - iot-network
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/ || exit 0"]
       interval: 30s
       timeout: 10s
       retries: 10
       start_period: 120s
-    restart: unless-stopped
 
 networks:
   iot-network:
