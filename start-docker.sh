@@ -65,26 +65,26 @@ done
 # Clean if requested
 if [ "$CLEAN" = true ]; then
     echo -e "${BLUE}[2/5] Cleaning up...${NC}"
-    docker compose down -v --rmi all 2>/dev/null
+    docker-compose down -v --rmi all 2>/dev/null
     echo -e "${GREEN}✅ Cleanup complete${NC}"
     echo ""
 else
     echo -e "${BLUE}[2/5] Stopping existing containers...${NC}"
-    docker compose down 2>/dev/null
+    docker-compose down 2>/dev/null
     echo -e "${GREEN}✅ Stopped${NC}"
     echo ""
 fi
 
 # Remove old unhealthy containers
 echo -e "${BLUE}[3/5] Removing old containers...${NC}"
-docker compose rm -f 2>/dev/null
+docker-compose rm -f 2>/dev/null
 echo -e "${GREEN}✅ Removed${NC}"
 echo ""
 
 # Build if requested
 if [ "$REBUILD" = true ]; then
     echo -e "${BLUE}[4/5] Building images (this takes 2-3 minutes)...${NC}"
-    docker compose build --no-cache
+    docker-compose build --no-cache
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Build failed${NC}"
         exit 1
@@ -93,7 +93,7 @@ if [ "$REBUILD" = true ]; then
     echo ""
 else
     echo -e "${BLUE}[4/5] Building images (if needed)...${NC}"
-    docker compose build
+    docker-compose build
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Build failed${NC}"
         exit 1
@@ -104,12 +104,12 @@ fi
 
 # Start services in background
 echo -e "${BLUE}[5/5] Starting services...${NC}"
-docker compose up -d
+docker-compose up -d
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Failed to start services${NC}"
     echo ""
-    echo "Check logs with: docker compose logs"
+    echo "Check logs with: docker-compose logs"
     exit 1
 fi
 
@@ -145,7 +145,7 @@ sleep 30
 # Final status check
 echo ""
 echo -e "${BLUE}Checking service status...${NC}"
-docker compose ps
+docker-compose ps
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
@@ -165,10 +165,10 @@ echo "  Backend:  ${GREEN}http://34.93.247.3:3000${NC}"
 echo ""
 
 echo -e "${BLUE}Useful Commands:${NC}"
-echo "  View logs:        ${YELLOW}docker compose logs -f${NC}"
-echo "  Check status:     ${YELLOW}docker compose ps${NC}"
-echo "  Stop services:    ${YELLOW}docker compose down${NC}"
-echo "  Restart service:  ${YELLOW}docker compose restart backend${NC}"
+echo "  View logs:        ${YELLOW}docker-compose logs -f${NC}"
+echo "  Check status:     ${YELLOW}docker-compose ps${NC}"
+echo "  Stop services:    ${YELLOW}docker-compose down${NC}"
+echo "  Restart service:  ${YELLOW}docker-compose restart backend${NC}"
 echo ""
 
 echo -e "${YELLOW}💡 Tip: Wait 1-2 minutes for full initialization${NC}"
