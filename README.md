@@ -82,7 +82,7 @@ docker-compose up --build
 
 ## 🌐 VM/Server Deployment
 
-For deploying on a Linux VM or server, see the comprehensive [DEPLOYMENT.md](DEPLOYMENT.md) guide which covers:
+For deploying on a Linux VM or server, see the comprehensive [DEPLOYMENT.md](Docs/DEPLOYMENT.md) guide which covers:
 
 - Installing Docker and Docker Compose on Ubuntu/Debian
 - Cloning and configuring the application
