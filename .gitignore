@@ -40,7 +40,7 @@ Thumbs.db
 
 # Misc
 *.log
-.env
-.env.local
+#.env
+#.env.local
 *.pid
 *.seed
