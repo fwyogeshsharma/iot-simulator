@@ -139,6 +139,17 @@ Expected output:
 
 ## Troubleshooting
 
+### Issue: "manifest for openjdk:11-jre-slim not found"
+
+This error occurs when Docker tries to use a deprecated image.
+
+**Solution:**
+The Dockerfile has been updated to use Eclipse Temurin (the recommended OpenJDK distribution):
+- Build stage: `maven:3.9-eclipse-temurin-11`
+- Runtime stage: `eclipse-temurin:11-jre-jammy`
+
+If you encounter this error, make sure you have the latest version of the Dockerfile from the repository.
+
 ### Issue: "build path ... either does not exist"
 
 This error occurs when docker-compose.yml is in the wrong location.

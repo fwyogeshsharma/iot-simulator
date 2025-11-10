@@ -6,7 +6,8 @@
       "Bash(npm start)",
       "Bash(netstat:*)",
       "Bash(findstr:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(docker compose:*)"
     ],
     "deny": [],
     "ask": []
