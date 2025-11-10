@@ -49,7 +49,7 @@ This will:
 
 **Access the application:**
 - **Frontend**: http://localhost:4200
-- **Backend API**: http://localhost:8080
+- **Backend API**: http://localhost:3000
 
 ### Additional Options
 
@@ -134,7 +134,7 @@ mvn clean install
 mvn spring-boot:run
 ```
 
-The backend will start on `http://localhost:8080`
+The backend will start on `http://localhost:3000`
 
 ### API Endpoints
 
@@ -239,7 +239,7 @@ AppComponent
 ```
 Angular Frontend (Port 4200)
     ↓ HTTP REST API
-Spring Boot Backend (Port 8080)
+Spring Boot Backend (Port 3000)
     ↓ REST API
 Supabase (Database + Edge Functions)
     ↓
@@ -255,7 +255,7 @@ Device Data Storage
 ### Networking
 - Bridge network: `iot-network`
 - Internal communication between services
-- Exposed ports: 8080 (backend), 4200 (frontend)
+- Exposed ports: 3000 (backend), 4200 (frontend)
 
 ### Health Checks
 - Backend: Checks `/actuator/health` endpoint
@@ -308,10 +308,10 @@ docker-compose restart
 ```
 
 ### Port Conflicts
-If ports 8080 or 4200 are in use, edit `docker-compose.yml`:
+If ports 3000 or 4200 are in use, edit `docker-compose.yml`:
 ```yaml
 ports:
-  - "8081:8080"  # Backend on 8081 instead
+  - "8081:3000"  # Backend on 8081 instead
   - "4201:80"    # Frontend on 4201 instead
 ```
 

@@ -8,7 +8,7 @@ This guide will help you deploy the IoT Simulator on a Linux VM (Ubuntu/Debian).
 - Minimum 2GB RAM, 2 CPU cores
 - Docker and Docker Compose installed
 - Git installed
-- Open ports: 8080 (backend), 4200 (frontend)
+- Open ports: 3000 (backend), 4200 (frontend)
 
 ## Step 1: Install Docker and Docker Compose
 
@@ -122,7 +122,7 @@ docker compose logs -f
 docker compose ps
 
 # Check backend health
-curl http://localhost:8080/
+curl http://localhost:3000/
 
 # Check frontend (from your browser or curl)
 curl http://localhost:4200/
@@ -135,7 +135,7 @@ Expected output:
 ## Accessing the Application
 
 - **Frontend**: http://your-vm-ip:4200
-- **Backend API**: http://your-vm-ip:8080
+- **Backend API**: http://your-vm-ip:3000
 
 ## Troubleshooting
 
@@ -167,15 +167,60 @@ mv iot-simulator/start-docker.sh .
 
 ### Issue: Port already in use
 
-```bash
-# Find process using port 8080
-sudo lsof -i :8080
-# Or
-sudo netstat -tulpn | grep 8080
+**Error:**
+```
+Error starting userland proxy: listen tcp4 0.0.0.0:3000: bind: address already in use
+```
 
-# Kill the process if needed
+This happens when another process is already using port 3000 or 4200.
+
+**Solution A: Use the automated fix script**
+
+```bash
+# Make the script executable
+chmod +x fix-port-conflict.sh
+
+# Run the script (it will help you identify and kill the conflicting process)
+./fix-port-conflict.sh
+```
+
+**Solution B: Manual fix**
+
+```bash
+# Find what's using port 3000
+sudo lsof -i :3000
+# Or
+sudo netstat -tulpn | grep 3000
+
+# Kill the process (replace <PID> with the actual process ID)
+sudo kill -9 <PID>
+
+# Verify it's killed
+sudo lsof -i :3000  # Should return nothing
+
+# For port 4200
+sudo lsof -i :4200
 sudo kill -9 <PID>
 ```
+
+**Solution C: Change ports in docker-compose.yml**
+
+If you want to keep the existing service running, you can change the ports:
+
+```yaml
+# Edit docker-compose.yml
+services:
+  backend:
+    ports:
+      - "8081:3000"  # Use port 8081 instead
+  frontend:
+    ports:
+      - "4201:80"    # Use port 4201 instead
+```
+
+Then access:
+- Backend: http://your-vm-ip:8081
+- Frontend: http://your-vm-ip:4201
 
 ### Issue: Permission denied for Docker
 
@@ -260,7 +305,7 @@ If you're using UFW (Ubuntu):
 sudo ufw allow 22/tcp
 
 # Allow backend
-sudo ufw allow 8080/tcp
+sudo ufw allow 3000/tcp
 
 # Allow frontend
 sudo ufw allow 4200/tcp

@@ -96,7 +96,7 @@ fi
 
 # Start the services
 echo -e "${BLUE}🚀 Starting IoT Simulator services...${NC}"
-echo -e "${BLUE}   - Backend (Spring Boot): http://localhost:8080${NC}"
+echo -e "${BLUE}   - Backend (Spring Boot): http://localhost:3000${NC}"
 echo -e "${BLUE}   - Frontend (Angular): http://localhost:4200${NC}"
 echo ""
 
@@ -153,7 +153,7 @@ echo -e "${GREEN}║                                                      ║${N
 echo -e "${GREEN}║  🎉 IoT Simulator is now running!                   ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}║  📊 Frontend: ${BLUE}http://localhost:4200${GREEN}                 ║${NC}"
-echo -e "${GREEN}║  🔧 Backend:  ${BLUE}http://localhost:8080${GREEN}                 ║${NC}"
+echo -e "${GREEN}║  🔧 Backend:  ${BLUE}http://localhost:3000${GREEN}                 ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}║  Press Ctrl+C to stop all services                  ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"

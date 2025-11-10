@@ -65,7 +65,7 @@ docker compose ps
 docker stats
 
 # Backend health
-curl http://localhost:8080/
+curl http://localhost:3000/
 
 # Frontend health
 curl http://localhost:4200/
@@ -87,8 +87,16 @@ git pull
 # Check Docker is running
 docker info
 
-# Check port usage
-sudo netstat -tulpn | grep -E '8080|4200'
+# Fix port conflicts (automated)
+./fix-port-conflict.sh
+
+# Check port usage (manual)
+sudo lsof -i :3000
+sudo lsof -i :4200
+sudo netstat -tulpn | grep -E '3000|4200'
+
+# Kill process using a port
+sudo kill -9 <PID>
 
 # Restart a service
 docker compose restart backend
@@ -105,7 +113,7 @@ docker compose logs -f --tail=50
 ## Access URLs
 
 - **Frontend**: http://your-vm-ip:4200
-- **Backend**: http://your-vm-ip:8080
+- **Backend**: http://your-vm-ip:3000
 
 ## File Locations
 
@@ -132,7 +140,7 @@ docker system prune -a --volumes
 ```bash
 # Allow ports
 sudo ufw allow 22/tcp   # SSH
-sudo ufw allow 8080/tcp # Backend
+sudo ufw allow 3000/tcp # Backend
 sudo ufw allow 4200/tcp # Frontend
 
 # Check firewall status
@@ -151,7 +159,7 @@ echo "1. Docker status:"
 docker compose ps
 echo ""
 echo "2. Backend health:"
-curl -s http://localhost:8080/ && echo "✅ Backend OK" || echo "❌ Backend DOWN"
+curl -s http://localhost:3000/ && echo "✅ Backend OK" || echo "❌ Backend DOWN"
 echo ""
 echo "3. Frontend health:"
 curl -s http://localhost:4200/ > /dev/null && echo "✅ Frontend OK" || echo "❌ Frontend DOWN"
