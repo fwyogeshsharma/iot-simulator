@@ -9,18 +9,18 @@ services:
     container_name: iot-simulator-backend
     ports:
       - "3000:8080"
+    env_file:
+      - .env
     environment:
-      # Java options
-      - JAVA_OPTS=-Xmx512m -Xms256m
-      # Supabase configuration
-      - SUPABASE_PROFILES_URL=https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/profiles
-      - SUPABASE_DEVICES_URL=https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/devices
-      - SUPABASE_DEVICE_DATA_URL=https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_data
-      - SUPABASE_DEVICE_TYPE_DATA_CONFIGS_URL=https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_type_data_configs
-      - SUPABASE_DEVICE_TYPES_URL=https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_types
-      - SUPABASE_ELDERLY_PERSONS_URL=https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/elderly_persons
-      - SUPABASE_APIKEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpeWZjdnlwZWlmYmRhcW5mZ3JyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTgwMTI0NiwiZXhwIjoyMDc1Mzc3MjQ2fQ.aLEfYBHEgtrjH_99iwriFQTw4pMX5Up7zLq5Bxk0fhs
-      - SIMULATOR_DEVICE_INGEST_URL=https://wiyfcvypeifbdaqnfgrr.supabase.co/functions/v1/device-ingest
+      - JAVA_OPTS=${JAVA_OPTS}
+      - SUPABASE_PROFILES_URL=${SUPABASE_PROFILES_URL}
+      - SUPABASE_DEVICES_URL=${SUPABASE_DEVICES_URL}
+      - SUPABASE_DEVICE_DATA_URL=${SUPABASE_DEVICE_DATA_URL}
+      - SUPABASE_DEVICE_TYPE_DATA_CONFIGS_URL=${SUPABASE_DEVICE_TYPE_DATA_CONFIGS_URL}
+      - SUPABASE_DEVICE_TYPES_URL=${SUPABASE_DEVICE_TYPES_URL}
+      - SUPABASE_ELDERLY_PERSONS_URL=${SUPABASE_ELDERLY_PERSONS_URL}
+      - SUPABASE_APIKEY=${SUPABASE_APIKEY}
+      - SIMULATOR_DEVICE_INGEST_URL=${SIMULATOR_DEVICE_INGEST_URL}
     networks:
       - iot-network
     healthcheck:
