@@ -84,11 +84,19 @@ git pull
 ### Troubleshooting
 
 ```bash
+# Run full diagnostics (RECOMMENDED)
+./diagnose-docker.sh
+
 # Check Docker is running
 docker info
 
 # Fix port conflicts (automated)
 ./fix-port-conflict.sh
+
+# Check container health
+docker compose ps
+docker inspect --format='{{.State.Health.Status}}' iot-simulator-backend
+docker inspect --format='{{.State.Health.Status}}' iot-simulator-frontend
 
 # Check port usage (manual)
 sudo lsof -i :3000
@@ -108,6 +116,10 @@ docker compose up -d
 
 # View real-time logs
 docker compose logs -f --tail=50
+
+# View specific service logs
+docker compose logs backend
+docker compose logs frontend
 ```
 
 ## Access URLs

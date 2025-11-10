@@ -222,6 +222,69 @@ Then access:
 - Backend: http://your-vm-ip:8081
 - Frontend: http://your-vm-ip:4201
 
+### Issue: Frontend/Backend container is unhealthy
+
+**Error:**
+```
+ERROR: for frontend  Container "xyz" is unhealthy.
+```
+
+This happens when the health check fails. Common causes:
+- Container needs more time to start
+- Build failed
+- Configuration error
+
+**Solution A: Use the diagnostic script**
+
+```bash
+# Make script executable
+chmod +x diagnose-docker.sh
+
+# Run diagnostics
+./diagnose-docker.sh
+```
+
+The script will:
+- Show container status and health
+- Display relevant logs
+- Provide quick fix options
+
+**Solution B: Check logs and restart**
+
+```bash
+# Check which container is unhealthy
+docker compose ps
+
+# View logs for the unhealthy container
+docker compose logs backend  # or frontend
+
+# Common fixes:
+
+# 1. Just restart the container
+docker compose restart backend  # or frontend
+
+# 2. Rebuild the container
+docker compose up --build -d backend  # or frontend
+
+# 3. Clean restart everything
+docker compose down
+docker compose up --build -d
+```
+
+**Solution C: Give containers more time**
+
+The health checks now have longer timeouts (60 seconds start period). If you still see this error:
+
+```bash
+# Wait a bit longer and check again
+sleep 30
+docker compose ps
+
+# Check health status
+docker inspect --format='{{.State.Health.Status}}' iot-simulator-backend
+docker inspect --format='{{.State.Health.Status}}' iot-simulator-frontend
+```
+
 ### Issue: Permission denied for Docker
 
 ```bash
