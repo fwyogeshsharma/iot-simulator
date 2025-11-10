@@ -80,6 +80,32 @@ docker-compose down
 docker-compose up --build
 ```
 
+## 🌐 VM/Server Deployment
+
+For deploying on a Linux VM or server, see the comprehensive [DEPLOYMENT.md](DEPLOYMENT.md) guide which covers:
+
+- Installing Docker and Docker Compose on Ubuntu/Debian
+- Cloning and configuring the application
+- Troubleshooting common deployment issues
+- Firewall configuration
+- Production recommendations
+
+**Quick VM Deploy:**
+
+```bash
+# Clone the repository
+git clone <your-repo-url> iot-simulator
+cd iot-simulator
+
+# Make script executable
+chmod +x start-docker.sh
+
+# Deploy
+./start-docker.sh
+```
+
+**Important**: Ensure the `docker-compose.yml` file is at the root level of the project, not in a subdirectory!
+
 ## 💻 Manual Setup (Without Docker)
 
 ### Prerequisites
