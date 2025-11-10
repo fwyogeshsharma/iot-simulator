@@ -108,8 +108,39 @@ export class AppComponent implements OnInit, OnDestroy {
   onProfileChange() {
     if (!this.selectedProfile) return;
 
-    // Call Supabase directly with filter for elderly_person_id
-    const devicesUrl = `${environment.devicesUrl}?elderly_person_id=eq.${this.selectedProfile.id}`;
+    // Call Supabase directly - query elderly_persons by user_id
+    const elderlyPersonsUrl = `${environment.elderlyPersonsUrl}?select=id,full_name&user_id=eq.${this.selectedProfile.id}`;
+    console.log('Loading elderly persons from:', elderlyPersonsUrl);
+
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${environment.profilesApiKey}`,
+      'Content-Type': 'application/json',
+      'apikey': environment.profilesApiKey
+    });
+
+    this.http.get<any[]>(elderlyPersonsUrl, { headers }).subscribe({
+      next: (elderlyPersons) => {
+        console.log('Elderly persons loaded:', elderlyPersons);
+
+        // For each elderly person, load their devices
+        if (elderlyPersons && elderlyPersons.length > 0) {
+          // Use the first elderly person's ID to load devices
+          const elderlyPersonId = elderlyPersons[0].id;
+          this.loadDevicesForElderlyPerson(elderlyPersonId);
+        } else {
+          this.devices = [];
+        }
+      },
+      error: (err) => {
+        console.error('Failed to load elderly persons:', err);
+        this.devices = [];
+      }
+    });
+    this.saveSettings();
+  }
+
+  loadDevicesForElderlyPerson(elderlyPersonId: string) {
+    const devicesUrl = `${environment.devicesUrl}?elderly_person_id=eq.${elderlyPersonId}`;
     console.log('Loading devices from:', devicesUrl);
 
     const headers = new HttpHeaders({
@@ -136,7 +167,6 @@ export class AppComponent implements OnInit, OnDestroy {
         this.devices = [];
       }
     });
-    this.saveSettings();
   }
 
   toggleDeviceSelection(deviceId: string) {
