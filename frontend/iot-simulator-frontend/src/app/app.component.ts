@@ -11,11 +11,12 @@ interface Profile {
 
 interface Device {
   id: string;
-  deviceName: string;
-  deviceId: string;
-  apiKey: string;
-  deviceType?: string;
+  device_name: string;
+  device_id: string;
+  api_key: string;
+  device_type?: string;
   description?: string;
+  elderly_person_id?: string;
 }
 
 interface SimulationResponse {

@@ -61,9 +61,9 @@
             [disabled]="isSimulating"
           />
           <label [for]="'device-' + device.id">
-            {{device.deviceName}}
+            {{device.device_name | titlecase}}
             <span *ngIf="device.description" class="device-description">({{device.description}})</span>
-            <span class="device-id">({{device.deviceId}})</span>
+            <span class="device-id">({{device.device_id}})</span>
           </label>
         </div>
       </div>
