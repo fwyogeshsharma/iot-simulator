@@ -6,6 +6,7 @@ import com.example.iotsimulatorbackend.model.Device;
 import com.example.iotsimulatorbackend.model.SimulationRequest;
 import com.example.iotsimulatorbackend.model.SimulationResponse;
 import com.example.iotsimulatorbackend.model.SimulationStatistics;
+import com.example.iotsimulatorbackend.model.GeofencePlace;
 import com.example.iotsimulatorbackend.service.SimulatorService;
 import com.example.iotsimulatorbackend.service.SimulationManager;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -105,5 +106,10 @@ public class SimulatorController {
         }
 
         return ResponseEntity.ok(statistics);
+    }
+
+    @GetMapping("/geofence-places/{elderlyPersonId}")
+    public ResponseEntity<List<GeofencePlace>> getGeofencePlaces(@PathVariable String elderlyPersonId) {
+        return ResponseEntity.ok(service.getGeofencePlacesByElderlyPersonId(elderlyPersonId));
     }
 }

@@ -1,6 +1,7 @@
 package com.example.iotsimulatorbackend.service;
 
 import com.example.iotsimulatorbackend.model.DataTypeConfig;
+import com.example.iotsimulatorbackend.model.GeofencePlace;
 import com.example.iotsimulatorbackend.model.SimulationStatistics;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -167,7 +168,9 @@ public class SimulationManager {
         private final String deviceIngestUrl;
         private final SimulationStatistics statistics;
         private final Map<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
+        private final Map<String, LocationGenerator> locationGenerators;
         private volatile boolean isRunning = false;
+        private List<GeofencePlace> geofencePlaces = new ArrayList<>();
 
         public SimulationTask(String simulationId, String elderlyPersonId,
                             List<com.example.iotsimulatorbackend.model.Device> devices,
@@ -181,10 +184,27 @@ public class SimulationManager {
             this.objectMapper = objectMapper;
             this.deviceIngestUrl = deviceIngestUrl;
             this.statistics = statistics;
+            this.locationGenerators = new ConcurrentHashMap<>();
         }
 
         public void start() {
             isRunning = true;
+
+            // Fetch geofence places for location-based simulation
+            logger.info("📍 Attempting to load geofence places for elderly person: {}", elderlyPersonId);
+            geofencePlaces = simulatorService.getGeofencePlacesByElderlyPersonId(elderlyPersonId);
+            logger.info("📍 Geofence places loaded: {} places", geofencePlaces.size());
+            if (!geofencePlaces.isEmpty()) {
+                logger.info("📍 Loaded {} geofence places for location-based simulation", geofencePlaces.size());
+                for (GeofencePlace place : geofencePlaces) {
+                    logger.info("   ├─ {} ({}) - Lat: {}, Lon: {}, Radius: {}m",
+                            place.getName(), place.getPlaceType(),
+                            place.getLatitude(), place.getLongitude(), place.getRadiusMeters());
+                }
+            } else {
+                logger.warn("⚠️  NO GEOFENCE PLACES FOUND! Location simulation will use random values.");
+                logger.warn("    Please ensure geofence places are created for elderly person ID: {}", elderlyPersonId);
+            }
 
             // For each device, get its data type configs and start scheduling
             int totalScheduled = 0;
@@ -199,6 +219,20 @@ public class SimulationManager {
 
                     // For each data type config, schedule generation
                     for (DataTypeConfig config : configs) {
+                        logger.debug("   Data type: {} - ConfigType: {}", config.getDataType(), config.getConfigType());
+
+                        // Initialize LocationGenerator for GPS/location devices
+                        if (("gps".equals(config.getDataType()) || "location".equals(config.getDataType()))) {
+                            String generatorKey = device.getId() + "_" + config.getDataType();
+                            if (!geofencePlaces.isEmpty()) {
+                                locationGenerators.put(generatorKey, new LocationGenerator(geofencePlaces));
+                                logger.info("✅ Initialized LocationGenerator for device {} ({}) - will use {} geofence places",
+                                        device.getDeviceName(), device.getDeviceId(), geofencePlaces.size());
+                            } else {
+                                logger.warn("⚠️  Not initializing LocationGenerator - no geofence places loaded");
+                            }
+                        }
+
                         scheduleDataGeneration(device, config);
                         totalScheduled++;
                     }
@@ -258,8 +292,32 @@ public class SimulationManager {
 
         private void generateAndSendData(com.example.iotsimulatorbackend.model.Device device, DataTypeConfig config) {
             try {
-                // Generate random value based on config
-                Object generatedValue = generateValue(config);
+                // Generate value - use LocationGenerator for GPS/location data
+                Object generatedValue;
+                if ("gps".equals(config.getDataType()) || "location".equals(config.getDataType())) {
+                    String generatorKey = device.getId() + "_" + config.getDataType();
+                    LocationGenerator generator = locationGenerators.get(generatorKey);
+                    if (generator != null) {
+                        com.example.iotsimulatorbackend.model.LocationData locationData = generator.generateNextLocation();
+                        generatedValue = locationData.toMap();
+
+                        // Log movement info
+                        if (generator.getCurrentPlace() != null) {
+                            logger.debug("📍 {} at {} ({}) - Lat: {}, Lon: {}",
+                                    device.getDeviceId(),
+                                    generator.getCurrentPlace().getName(),
+                                    generator.getCurrentPlace().getPlaceType(),
+                                    String.format("%.6f", generator.getCurrentLat()),
+                                    String.format("%.6f", generator.getCurrentLon()));
+                        }
+                    } else {
+                        // Fallback if no generator
+                        generatedValue = generateValue(config);
+                    }
+                } else {
+                    // Use standard value generation
+                    generatedValue = generateValue(config);
+                }
 
                 // Create payload
                 Map<String, Object> payload = new LinkedHashMap<>();
@@ -291,9 +349,11 @@ public class SimulationManager {
                     // Record success in statistics
                     statistics.recordSuccess(device.getId(), device.getDeviceName(),
                                            config.getDataType(), config.getDisplayName());
-                    logger.debug("✓ {} [{}] = {} {} (device: {})",
-                            config.getDisplayName(), config.getDataType(),
-                            generatedValue, config.getUnit(), device.getDeviceId());
+                    if (!("gps".equals(config.getDataType()) || "location".equals(config.getDataType()))) {
+                        logger.debug("✓ {} [{}] = {} {} (device: {})",
+                                config.getDisplayName(), config.getDataType(),
+                                generatedValue, config.getUnit(), device.getDeviceId());
+                    }
                 } else {
                     statistics.recordFailure(device.getId(), device.getDeviceName(),
                                            config.getDataType(), config.getDisplayName());
@@ -330,6 +390,19 @@ public class SimulationManager {
                     Map<String, Integer> result = new LinkedHashMap<>();
                     result.put("systolic", systolicMin + new Random().nextInt(systolicMax - systolicMin + 1));
                     result.put("diastolic", diastolicMin + new Random().nextInt(diastolicMax - diastolicMin + 1));
+                    return result;
+                } else if ("gps".equals(config.getDataType()) || "location".equals(config.getDataType())) {
+                    // Special handling for GPS/location data - generate random coordinates
+                    // Default to India coordinates if no bounds specified
+                    double latMin = ((Number) conf.getOrDefault("lat_min", 28.0)).doubleValue();
+                    double latMax = ((Number) conf.getOrDefault("lat_max", 29.0)).doubleValue();
+                    double lonMin = ((Number) conf.getOrDefault("lon_min", 77.0)).doubleValue();
+                    double lonMax = ((Number) conf.getOrDefault("lon_max", 78.0)).doubleValue();
+
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("latitude", latMin + (Math.random() * (latMax - latMin)));
+                    result.put("longitude", lonMin + (Math.random() * (lonMax - lonMin)));
+                    result.put("accuracy", 10 + (Math.random() * 20)); // 10-30 meters
                     return result;
                 } else {
                     double min = ((Number) conf.getOrDefault("min", 0)).doubleValue();
