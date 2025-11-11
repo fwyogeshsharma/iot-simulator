@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { environment } from '../environments/environment';
+import { interval, Subscription } from 'rxjs';
 
 interface Profile {
   id: string;
@@ -10,17 +11,32 @@ interface Profile {
 
 interface Device {
   id: string;
-  deviceName: string;
-  deviceId: string;
-  apiKey: string;
-  deviceType?: string;
+  device_name: string;
+  device_id: string;
+  api_key: string;
+  device_type?: string;
   description?: string;
+  elderly_person_id?: string;
 }
 
 interface SimulationResponse {
   simulationId: string;
   status: string;
   message: string;
+  deviceCount?: number;
+  dataTypeCount?: number;
+}
+
+interface SimulationStatistics {
+  simulationId: string;
+  totalDataPointsGenerated: number;
+  totalDataPointsSuccessful: number;
+  totalDataPointsFailed: number;
+  elapsedTimeSeconds: number;
+  successRate: number;
+  dataPointsPerMinute: number;
+  deviceStats?: any;
+  dataTypeStats?: any;
 }
 
 interface Settings {
@@ -45,6 +61,10 @@ export class AppComponent implements OnInit, OnDestroy {
   simulationStatus = '';
   message = '';
 
+  // Statistics
+  statistics: SimulationStatistics | null = null;
+  statisticsSubscription: Subscription | null = null;
+
   settings: Settings | null = null;
 
   constructor(private http: HttpClient) {}
@@ -55,6 +75,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    // Stop statistics polling
+    if (this.statisticsSubscription) {
+      this.statisticsSubscription.unsubscribe();
+    }
     // Stop any active simulation when component is destroyed
     if (this.isSimulating && this.simulationId) {
       this.stopSimulation();
@@ -84,9 +108,49 @@ export class AppComponent implements OnInit, OnDestroy {
 
   onProfileChange() {
     if (!this.selectedProfile) return;
-    const devicesUrl = `${environment.backendUrl}/devices/${this.selectedProfile.id}`;
+
+    // Call Supabase directly - query elderly_persons by user_id
+    const elderlyPersonsUrl = `${environment.elderlyPersonsUrl}?select=id,full_name&user_id=eq.${this.selectedProfile.id}`;
+    console.log('Loading elderly persons from:', elderlyPersonsUrl);
+
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${environment.profilesApiKey}`,
+      'Content-Type': 'application/json',
+      'apikey': environment.profilesApiKey
+    });
+
+    this.http.get<any[]>(elderlyPersonsUrl, { headers }).subscribe({
+      next: (elderlyPersons) => {
+        console.log('Elderly persons loaded:', elderlyPersons);
+
+        // For each elderly person, load their devices
+        if (elderlyPersons && elderlyPersons.length > 0) {
+          // Use the first elderly person's ID to load devices
+          const elderlyPersonId = elderlyPersons[0].id;
+          this.loadDevicesForElderlyPerson(elderlyPersonId);
+        } else {
+          this.devices = [];
+        }
+      },
+      error: (err) => {
+        console.error('Failed to load elderly persons:', err);
+        this.devices = [];
+      }
+    });
+    this.saveSettings();
+  }
+
+  loadDevicesForElderlyPerson(elderlyPersonId: string) {
+    const devicesUrl = `${environment.devicesUrl}?elderly_person_id=eq.${elderlyPersonId}`;
     console.log('Loading devices from:', devicesUrl);
-    this.http.get<Device[]>(devicesUrl).subscribe({
+
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${environment.profilesApiKey}`,
+      'Content-Type': 'application/json',
+      'apikey': environment.profilesApiKey
+    });
+
+    this.http.get<Device[]>(devicesUrl, { headers }).subscribe({
       next: (data) => {
         console.log('Devices loaded:', data);
         this.devices = data || [];
@@ -104,7 +168,6 @@ export class AppComponent implements OnInit, OnDestroy {
         this.devices = [];
       }
     });
-    this.saveSettings();
   }
 
   toggleDeviceSelection(deviceId: string) {
@@ -143,6 +206,9 @@ export class AppComponent implements OnInit, OnDestroy {
         this.isSimulating = true;
         this.simulationStatus = 'running';
         this.message = `Simulation started! Generating data for ${this.selectedDeviceIds.size || this.devices.length} device(s)`;
+
+        // Start polling for statistics every 2 seconds
+        this.startStatisticsPolling();
       },
       error: (err) => {
         console.error('Failed to start simulation:', err);
@@ -159,6 +225,9 @@ export class AppComponent implements OnInit, OnDestroy {
 
     console.log('Stopping simulation:', this.simulationId);
 
+    // Stop statistics polling
+    this.stopStatisticsPolling();
+
     this.http.post<SimulationResponse>(
       `${environment.backendUrl}/simulation/stop`,
       {},
@@ -174,6 +243,44 @@ export class AppComponent implements OnInit, OnDestroy {
       error: (err) => {
         console.error('Failed to stop simulation:', err);
         this.message = `Error stopping simulation: ${err.message}`;
+        this.isSimulating = false;
+        this.simulationId = null;
+      }
+    });
+  }
+
+  startStatisticsPolling() {
+    // Clear any existing subscription
+    this.stopStatisticsPolling();
+
+    // Poll statistics every 2 seconds
+    this.statisticsSubscription = interval(2000).subscribe(() => {
+      this.fetchStatistics();
+    });
+
+    // Fetch immediately
+    this.fetchStatistics();
+  }
+
+  stopStatisticsPolling() {
+    if (this.statisticsSubscription) {
+      this.statisticsSubscription.unsubscribe();
+      this.statisticsSubscription = null;
+    }
+  }
+
+  fetchStatistics() {
+    if (!this.simulationId) return;
+
+    this.http.get<SimulationStatistics>(
+      `${environment.backendUrl}/simulation/statistics/${this.simulationId}`
+    ).subscribe({
+      next: (stats) => {
+        this.statistics = stats;
+        console.log('Statistics updated:', stats);
+      },
+      error: (err) => {
+        console.error('Failed to fetch statistics:', err);
       }
     });
   }
@@ -200,6 +307,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.settings = null;
     this.selectedProfile = null;
     this.selectedDeviceIds.clear();
+    this.devices = [];
+    this.statistics = null;
     this.message = 'Settings reset.';
     if (this.isSimulating) {
       this.stopSimulation();

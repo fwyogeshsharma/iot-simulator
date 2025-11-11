@@ -1,4 +1,5 @@
 /* Global Styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 * {
   margin: 0;
@@ -9,34 +10,311 @@
 html, body {
   height: 100%;
   margin: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 body {
   padding: 0;
   margin: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #333;
+  color: #1F2937;
   line-height: 1.6;
+  position: relative;
+}
+
+/* Animated Background */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #0F2557 0%, #1E3A8A 50%, #2563EB 100%);
+  z-index: -2;
+}
+
+/* Animated gradient overlay */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(37, 99, 235, 0.3) 0%, transparent 50%),
+    radial-gradient(circle at 40% 90%, rgba(30, 58, 138, 0.2) 0%, transparent 50%);
+  animation: gradientShift 15s ease-in-out infinite;
+  z-index: -1;
+}
+
+@keyframes gradientShift {
+  0%, 100% {
+    opacity: 0.8;
+    transform: scale(1) translate(0, 0);
+  }
+  33% {
+    opacity: 1;
+    transform: scale(1.1) translate(-5%, 5%);
+  }
+  66% {
+    opacity: 0.9;
+    transform: scale(1.05) translate(5%, -5%);
+  }
 }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: #F3F4F6;
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #667eea;
-  border-radius: 4px;
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+  border-radius: 5px;
+  border: 2px solid #F3F4F6;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #764ba2;
+  background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+}
+
+/* Selection styling */
+::selection {
+  background: #BFDBFE;
+  color: #1E3A8A;
+}
+
+/* Floating IoT Elements - Healthcare Theme */
+.floating-elements {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+}
+
+/* IoT Device Particles */
+.particle {
+  position: absolute;
+  background: rgba(147, 197, 253, 0.15);
+  border-radius: 50%;
+  animation: float 20s infinite ease-in-out;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+.particle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60%;
+  height: 60%;
+  background: rgba(191, 219, 254, 0.3);
+  border-radius: 50%;
+  animation: pulse 3s ease-in-out infinite;
+}
+
+/* Different particle sizes and positions */
+.particle:nth-child(1) {
+  width: 100px;
+  height: 100px;
+  top: 10%;
+  left: 15%;
+  animation-duration: 25s;
+  animation-delay: 0s;
+}
+
+.particle:nth-child(2) {
+  width: 80px;
+  height: 80px;
+  top: 60%;
+  left: 80%;
+  animation-duration: 30s;
+  animation-delay: 5s;
+}
+
+.particle:nth-child(3) {
+  width: 120px;
+  height: 120px;
+  top: 80%;
+  left: 10%;
+  animation-duration: 35s;
+  animation-delay: 10s;
+}
+
+.particle:nth-child(4) {
+  width: 90px;
+  height: 90px;
+  top: 30%;
+  left: 70%;
+  animation-duration: 28s;
+  animation-delay: 3s;
+}
+
+.particle:nth-child(5) {
+  width: 70px;
+  height: 70px;
+  top: 50%;
+  left: 40%;
+  animation-duration: 32s;
+  animation-delay: 7s;
+}
+
+.particle:nth-child(6) {
+  width: 110px;
+  height: 110px;
+  top: 20%;
+  left: 50%;
+  animation-duration: 27s;
+  animation-delay: 12s;
+}
+
+/* Floating animation */
+@keyframes float {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0.3;
+  }
+  25% {
+    transform: translate(30px, -50px) rotate(90deg);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate(-20px, -80px) rotate(180deg);
+    opacity: 0.4;
+  }
+  75% {
+    transform: translate(40px, -40px) rotate(270deg);
+    opacity: 0.6;
+  }
+}
+
+/* Pulse animation for inner circle */
+@keyframes pulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.3);
+    opacity: 0.8;
+  }
+}
+
+/* Connection lines - representing IoT network */
+.connection-line {
+  position: absolute;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(147, 197, 253, 0.3), transparent);
+  animation: connectionPulse 4s infinite ease-in-out;
+  transform-origin: left center;
+}
+
+.connection-line:nth-of-type(1) {
+  width: 200px;
+  top: 20%;
+  left: 20%;
+  transform: rotate(45deg);
+  animation-delay: 0s;
+}
+
+.connection-line:nth-of-type(2) {
+  width: 150px;
+  top: 50%;
+  left: 60%;
+  transform: rotate(-30deg);
+  animation-delay: 1s;
+}
+
+.connection-line:nth-of-type(3) {
+  width: 180px;
+  top: 70%;
+  left: 30%;
+  transform: rotate(15deg);
+  animation-delay: 2s;
+}
+
+@keyframes connectionPulse {
+  0%, 100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Healthcare cross symbols */
+.healthcare-symbol {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  opacity: 0.15;
+  animation: symbolFloat 20s infinite ease-in-out;
+}
+
+.healthcare-symbol::before,
+.healthcare-symbol::after {
+  content: '';
+  position: absolute;
+  background: rgba(191, 219, 254, 0.6);
+}
+
+.healthcare-symbol::before {
+  width: 100%;
+  height: 30%;
+  top: 35%;
+  left: 0;
+}
+
+.healthcare-symbol::after {
+  width: 30%;
+  height: 100%;
+  top: 0;
+  left: 35%;
+}
+
+.healthcare-symbol:nth-of-type(1) {
+  top: 15%;
+  left: 85%;
+  animation-duration: 25s;
+}
+
+.healthcare-symbol:nth-of-type(2) {
+  top: 75%;
+  left: 75%;
+  animation-duration: 30s;
+  animation-delay: 5s;
+}
+
+.healthcare-symbol:nth-of-type(3) {
+  top: 45%;
+  left: 10%;
+  animation-duration: 28s;
+  animation-delay: 10s;
+}
+
+@keyframes symbolFloat {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.15;
+  }
+  50% {
+    transform: translateY(-30px) rotate(180deg);
+    opacity: 0.25;
+  }
 }

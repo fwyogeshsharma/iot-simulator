@@ -1,5 +1,5 @@
 export const environment = {
-  production: false,
+  production: true,
   backendUrl: 'http://34.93.247.3:3000/api', // Backend URL (for simulation endpoints)
   profilesUrl: 'https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/profiles',
   elderlyPersonsUrl: 'https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/elderly_persons',

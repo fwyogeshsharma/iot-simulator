@@ -1,0 +1,110 @@
+╔══════════════════════════════════════════════════════════╗
+║                                                          ║
+║     Nginx + SSL Quick Setup - IoT Simulator             ║
+║                                                          ║
+╚══════════════════════════════════════════════════════════╝
+
+PREREQUISITES:
+--------------
+1. Two domains pointing to your server:
+   - Frontend: app.yourdomain.com → your-server-ip
+   - Backend:  api.yourdomain.com → your-server-ip
+
+2. Ports 80 and 443 open in firewall
+3. Docker containers running (ports 3000 & 4200)
+
+
+QUICK SETUP (3 STEPS):
+-----------------------
+
+Step 1: Run the setup script
+   $ chmod +x setup-nginx-ssl.sh
+   $ sudo ./setup-nginx-ssl.sh
+
+   (Enter your domains and email when prompted)
+
+Step 2: Update frontend environment
+   $ nano frontend/iot-simulator-frontend/src/environments/environment.prod.ts
+
+   Change:
+   backendUrl: 'http://localhost:3000/api'
+
+   To:
+   backendUrl: 'https://api.yourdomain.com/api'
+
+Step 3: Rebuild frontend
+   $ docker compose down
+   $ docker compose up -d --build frontend
+
+
+ACCESS YOUR APP:
+----------------
+Frontend: https://app.yourdomain.com
+Backend:  https://api.yourdomain.com
+
+
+VERIFY DNS BEFORE SETUP:
+-------------------------
+$ dig app.yourdomain.com
+$ dig api.yourdomain.com
+
+(Should show your server's IP address)
+
+
+COMMON COMMANDS:
+----------------
+Check Nginx:        sudo systemctl status nginx
+Reload Nginx:       sudo systemctl reload nginx
+Check SSL:          sudo certbot certificates
+Renew SSL:          sudo certbot renew
+View logs:          sudo tail -f /var/log/nginx/error.log
+
+
+WHAT THE SCRIPT DOES:
+---------------------
+✓ Installs Nginx
+✓ Installs Certbot (Let's Encrypt)
+✓ Configures reverse proxy
+✓ Obtains SSL certificates
+✓ Sets up auto-renewal
+✓ Configures firewall
+
+
+ARCHITECTURE:
+-------------
+Internet
+    ↓ HTTPS
+[Nginx]
+    ├─→ app.yourdomain.com → localhost:4200 (Frontend)
+    └─→ api.yourdomain.com → localhost:3000 (Backend)
+
+
+TROUBLESHOOTING:
+----------------
+SSL failed?
+  → Check DNS: dig yourdomain.com
+  → Check port 80: sudo ufw status
+  → Retry: sudo certbot --nginx -d yourdomain.com
+
+Can't access app?
+  → Check Nginx: sudo systemctl status nginx
+  → Check logs: sudo tail -f /var/log/nginx/error.log
+  → Test backend: curl https://api.yourdomain.com
+
+
+SECURITY NOTES:
+---------------
+- SSL certificates auto-renew every 60 days
+- HTTPS redirect is automatic
+- CORS headers configured for API
+- Firewall configured for HTTP/HTTPS
+
+
+FOR DETAILED INSTRUCTIONS:
+---------------------------
+See: NGINX_SSL_SETUP.md
+
+
+═══════════════════════════════════════════════════════════
+Production-ready HTTPS setup in minutes! 🚀
+═══════════════════════════════════════════════════════════

@@ -1,0 +1,30 @@
+# Node modules
+node_modules/
+npm-debug.log
+
+# Build output
+dist/
+.angular/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Tests
+coverage/
+*.spec.ts
+
+# Environment (these should be configured at runtime)
+.env
+.env.local

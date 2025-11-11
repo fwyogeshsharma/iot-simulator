@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # Backend Service (Spring Boot)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: iot-simulator-backend
+    ports:
+      - "3000:8080"
+    env_file:
+      - .env
+    environment:
+      - JAVA_OPTS=${JAVA_OPTS:-Xmx512m -Xms256m}
+      - SUPABASE_PROFILES_URL=${SUPABASE_PROFILES_URL}
+      - SUPABASE_DEVICES_URL=${SUPABASE_DEVICES_URL}
+      - SUPABASE_DEVICE_DATA_URL=${SUPABASE_DEVICE_DATA_URL}
+      - SUPABASE_DEVICE_TYPE_DATA_CONFIGS_URL=${SUPABASE_DEVICE_TYPE_DATA_CONFIGS_URL}
+      - SUPABASE_DEVICE_TYPES_URL=${SUPABASE_DEVICE_TYPES_URL}
+      - SUPABASE_ELDERLY_PERSONS_URL=${SUPABASE_ELDERLY_PERSONS_URL}
+      - SUPABASE_APIKEY=${SUPABASE_APIKEY}
+      - SIMULATOR_DEVICE_INGEST_URL=${SIMULATOR_DEVICE_INGEST_URL}
+    networks:
+      - iot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 0"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  # Frontend Service (Angular + Nginx)
+  frontend:
+    build:
+      context: ./frontend/iot-simulator-frontend
+      dockerfile: Dockerfile
+    container_name: iot-simulator-frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+    networks:
+      - iot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/ || exit 0"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+networks:
+  iot-network:
+    driver: bridge
+
+volumes:
+  backend-data:
