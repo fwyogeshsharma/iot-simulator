@@ -109,6 +109,20 @@ public class SimulatorController {
         return ResponseEntity.ok(statistics);
     }
 
+    @PostMapping("/sensor/generate")
+    public ResponseEntity<?> generateSensorData(
+            @RequestParam String deviceId,
+            @RequestParam String dataType) {
+        try {
+            Map<String, Object> result = simulationManager.generateAndSendSensorData(deviceId, dataType);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                Map.of("error", e.getMessage())
+            );
+        }
+    }
+
     @GetMapping("/geofence-places/{elderlyPersonId}")
     public ResponseEntity<List<GeofencePlace>> getGeofencePlaces(@PathVariable String elderlyPersonId) {
         return ResponseEntity.ok(service.getGeofencePlacesByElderlyPersonId(elderlyPersonId));
