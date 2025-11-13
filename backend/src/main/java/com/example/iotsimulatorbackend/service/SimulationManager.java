@@ -167,7 +167,7 @@ public class SimulationManager {
     public Map<String, Object> generateAndSendSensorData(String deviceId, String dataType) throws Exception {
         // Step 1: Get the device information directly from Supabase by device ID
         com.example.iotsimulatorbackend.model.Device targetDevice = getDeviceById(deviceId);
-        
+
         if (targetDevice == null) {
             throw new Exception("Device not found with ID: " + deviceId);
         }
@@ -175,33 +175,104 @@ public class SimulationManager {
         // Step 2: Get the data type configuration
         List<DataTypeConfig> configs = simulatorService.getDataTypesByDeviceId(deviceId);
         DataTypeConfig targetConfig = null;
-        
+
         for (DataTypeConfig config : configs) {
             if (config.getDataType().equals(dataType)) {
                 targetConfig = config;
                 break;
             }
         }
-        
+
         if (targetConfig == null) {
             throw new Exception("Data type not found: " + dataType + " for device: " + deviceId);
         }
 
-        // Step 3: Generate value
+        String unit = targetConfig.getUnit();
+        if (unit != null && unit.trim().isEmpty()) {
+            unit = null;
+        }
+
+        // Step 3: Special handling for location data with geofences
+        // Generate GPS data for ONE random geofence to trigger entry/exit event
+        if ("location".equals(dataType) && targetDevice.getElderlyPersonId() != null) {
+            List<GeofencePlace> geofences = simulatorService.getGeofencePlacesByElderlyPersonId(targetDevice.getElderlyPersonId());
+
+            if (geofences != null && !geofences.isEmpty()) {
+                // Pick a random geofence
+                GeofencePlace selectedGeofence = geofences.get(new Random().nextInt(geofences.size()));
+                logger.info("🎯 Generating GPS data for random geofence '{}' for elderly person: {}",
+                    selectedGeofence.getName(), targetDevice.getElderlyPersonId());
+
+                // Generate GPS coordinates within the selected geofence
+                Map<String, Double> gpsCoords = generateGpsWithinGeofence(selectedGeofence);
+
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("device_id", targetDevice.getDeviceId());
+                payload.put("data_type", targetConfig.getDataType());
+                payload.put("value", gpsCoords);
+
+                if (unit != null) {
+                    payload.put("unit", unit);
+                }
+
+                // Send to device-ingest endpoint
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("Authorization", "Bearer " + targetDevice.getApiKey());
+                headers.set("Content-Type", "application/json");
+
+                String payloadJson = objectMapper.writeValueAsString(payload);
+                logger.debug("📤 Sending GPS for geofence '{}': {}", selectedGeofence.getName(), payloadJson);
+
+                HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+                ResponseEntity<String> response = restTemplate.postForEntity(
+                    deviceIngestUrl, request, String.class);
+
+                Map<String, Object> result = new LinkedHashMap<>();
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    Map<String, Object> locationInfo = new LinkedHashMap<>();
+                    locationInfo.put("geofenceName", selectedGeofence.getName());
+                    locationInfo.put("latitude", gpsCoords.get("latitude"));
+                    locationInfo.put("longitude", gpsCoords.get("longitude"));
+                    locationInfo.put("radius", selectedGeofence.getRadiusMeters());
+
+                    List<Map<String, Object>> generatedLocations = new ArrayList<>();
+                    generatedLocations.add(locationInfo);
+
+                    result.put("success", true);
+                    result.put("message", String.format("Generated GPS data for geofence: %s", selectedGeofence.getName()));
+                    result.put("deviceId", targetDevice.getDeviceId());
+                    result.put("dataType", targetConfig.getDataType());
+                    result.put("displayName", targetConfig.getDisplayName());
+                    result.put("generatedLocations", generatedLocations);
+
+                    logger.info("✓ Generated and sent GPS data for geofence '{}' at ({}, {})",
+                        selectedGeofence.getName(), gpsCoords.get("latitude"), gpsCoords.get("longitude"));
+                } else {
+                    result.put("success", false);
+                    result.put("message", "Failed to send GPS data - Status: " + response.getStatusCode());
+                    result.put("error", response.getBody());
+                    logger.warn("✗ Failed to send GPS data for geofence '{}': {}",
+                        selectedGeofence.getName(), response.getStatusCode());
+                }
+
+                return result;
+            }
+        }
+
+        // Step 4: For non-location data, generate single value as before
         Object generatedValue = generateValue(targetConfig);
 
-        // Step 4: Create payload
+        // Step 5: Create payload
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("device_id", targetDevice.getDeviceId());
         payload.put("data_type", targetConfig.getDataType());
         payload.put("value", generatedValue);
 
-        String unit = targetConfig.getUnit();
-        if (unit != null && !unit.isEmpty() && !unit.trim().isEmpty()) {
+        if (unit != null) {
             payload.put("unit", unit);
         }
 
-        // Step 5: Send to device-ingest endpoint
+        // Step 6: Send to device-ingest endpoint
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + targetDevice.getApiKey());
         headers.set("Content-Type", "application/json");
@@ -222,9 +293,9 @@ public class SimulationManager {
             result.put("displayName", targetConfig.getDisplayName());
             result.put("value", generatedValue);
             result.put("unit", unit);
-            logger.info("✓ Generated and sent {} [{}] = {} {} (device: {})",
+            logger.info("✓ Generated and sent {} [{}] = {} {}",
                     targetConfig.getDisplayName(), targetConfig.getDataType(),
-                    generatedValue, unit, targetDevice.getDeviceId());
+                    generatedValue, unit != null ? unit : "");
         } else {
             result.put("success", false);
             result.put("message", "Failed to send data - Status: " + response.getStatusCode());
@@ -267,6 +338,33 @@ public class SimulationManager {
             logger.error("Error fetching device by ID: {}", e.getMessage());
             throw e;
         }
+    }
+
+    /**
+     * Generate GPS coordinates within a specific geofence boundary
+     */
+    private Map<String, Double> generateGpsWithinGeofence(GeofencePlace geofence) {
+        double centerLat = geofence.getLatitude();
+        double centerLon = geofence.getLongitude();
+        int radiusMeters = geofence.getRadiusMeters();
+
+        // Generate a random point within the circle defined by geofence
+        double randomDistance = Math.random() * radiusMeters;
+        double randomBearing = Math.random() * 360;
+
+        double[] newCoords = moveByBearing(centerLat, centerLon, randomBearing, randomDistance);
+        double latitude = newCoords[0];
+        double longitude = newCoords[1];
+
+        // Round to 6 decimal places for realistic GPS coordinates
+        double factor = Math.pow(10, 6);
+        latitude = Math.round(latitude * factor) / factor;
+        longitude = Math.round(longitude * factor) / factor;
+
+        Map<String, Double> result = new LinkedHashMap<>();
+        result.put("latitude", latitude);
+        result.put("longitude", longitude);
+        return result;
     }
 
     /**
@@ -343,6 +441,27 @@ public class SimulationManager {
             }
         }
     }
+
+    /**
+     * Move from a point by bearing and distance
+     * Returns new [latitude, longitude]
+     * Uses haversine formula for accurate distance calculations on earth's surface
+     */
+    private double[] moveByBearing(double lat, double lon, double bearing, double meters) {
+        double EARTH_RADIUS_METERS = 6371e3;
+        double φ1 = Math.toRadians(lat);
+        double λ1 = Math.toRadians(lon);
+        double θ = Math.toRadians(bearing);
+        double δ = meters / EARTH_RADIUS_METERS;
+
+        double φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) +
+                Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
+        double λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1),
+                Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
+
+        return new double[]{Math.toDegrees(φ2), Math.toDegrees(λ2)};
+    }
+
     private class SimulationTask {
         private final String simulationId;
         private final String elderlyPersonId;

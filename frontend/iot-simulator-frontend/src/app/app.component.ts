@@ -56,6 +56,14 @@ interface GenerateSensorResponse {
   value?: number | any;
   unit?: string;
   error?: string;
+  generatedLocations?: Array<{
+    geofenceName: string;
+    latitude: number;
+    longitude: number;
+    radius: number;
+  }>;
+  geofencesProcessed?: number;
+  totalGeofences?: number;
 }
 
 interface Settings {
@@ -278,18 +286,25 @@ export class AppComponent implements OnInit, OnDestroy {
         console.log('Sensor data generated:', response);
         this.lastGeneratedData = response;
         if (response.success) {
-          // Format value based on type (handle GPS coordinates as objects)
-          let formattedValue = '';
-          if (typeof response.value === 'object' && response.value !== null) {
-            if ('latitude' in response.value && 'longitude' in response.value) {
-              formattedValue = `Lat: ${response.value.latitude.toFixed(6)}, Lon: ${response.value.longitude.toFixed(6)}`;
-            } else {
-              formattedValue = JSON.stringify(response.value);
-            }
+          // Handle multi-geofence GPS response (multiple locations)
+          if (response.generatedLocations && Array.isArray(response.generatedLocations)) {
+            const locationCount = response.generatedLocations.length;
+            const locationNames = response.generatedLocations.map((loc: any) => loc.geofenceName).join(', ');
+            this.generationMessage = `Successfully generated GPS data for ${locationCount} geofence(s): ${locationNames}`;
           } else {
-            formattedValue = `${response.value} ${response.unit}`;
+            // Handle single value response (non-GPS or other data types)
+            let formattedValue = '';
+            if (typeof response.value === 'object' && response.value !== null) {
+              if ('latitude' in response.value && 'longitude' in response.value) {
+                formattedValue = `Lat: ${response.value.latitude.toFixed(6)}, Lon: ${response.value.longitude.toFixed(6)}`;
+              } else {
+                formattedValue = JSON.stringify(response.value);
+              }
+            } else {
+              formattedValue = `${response.value} ${response.unit || ''}`;
+            }
+            this.generationMessage = `Successfully generated ${response.displayName}: ${formattedValue}`;
           }
-          this.generationMessage = `Successfully generated ${response.displayName}: ${formattedValue}`;
         } else {
           this.generationMessage = `Error: ${response.message}`;
         }
