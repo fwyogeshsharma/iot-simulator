@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
@@ -106,6 +107,20 @@ public class SimulatorController {
         }
 
         return ResponseEntity.ok(statistics);
+    }
+
+    @PostMapping("/sensor/generate")
+    public ResponseEntity<?> generateSensorData(
+            @RequestParam String deviceId,
+            @RequestParam String dataType) {
+        try {
+            Map<String, Object> result = simulationManager.generateAndSendSensorData(deviceId, dataType);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                Map.of("error", e.getMessage())
+            );
+        }
     }
 
     @GetMapping("/geofence-places/{elderlyPersonId}")

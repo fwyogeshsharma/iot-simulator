@@ -3,6 +3,7 @@ package com.example.iotsimulatorbackend.service;
 import com.example.iotsimulatorbackend.model.DataTypeConfig;
 import com.example.iotsimulatorbackend.model.GeofencePlace;
 import com.example.iotsimulatorbackend.model.SimulationStatistics;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -158,6 +159,190 @@ public class SimulationManager {
     /**
      * Inner class to handle individual simulation tasks
      */
+
+    /**
+     * Generate and send data for a single sensor/device
+     */
+
+    public Map<String, Object> generateAndSendSensorData(String deviceId, String dataType) throws Exception {
+        // Step 1: Get the device information directly from Supabase by device ID
+        com.example.iotsimulatorbackend.model.Device targetDevice = getDeviceById(deviceId);
+        
+        if (targetDevice == null) {
+            throw new Exception("Device not found with ID: " + deviceId);
+        }
+
+        // Step 2: Get the data type configuration
+        List<DataTypeConfig> configs = simulatorService.getDataTypesByDeviceId(deviceId);
+        DataTypeConfig targetConfig = null;
+        
+        for (DataTypeConfig config : configs) {
+            if (config.getDataType().equals(dataType)) {
+                targetConfig = config;
+                break;
+            }
+        }
+        
+        if (targetConfig == null) {
+            throw new Exception("Data type not found: " + dataType + " for device: " + deviceId);
+        }
+
+        // Step 3: Generate value
+        Object generatedValue = generateValue(targetConfig);
+
+        // Step 4: Create payload
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("device_id", targetDevice.getDeviceId());
+        payload.put("data_type", targetConfig.getDataType());
+        payload.put("value", generatedValue);
+
+        String unit = targetConfig.getUnit();
+        if (unit != null && !unit.isEmpty() && !unit.trim().isEmpty()) {
+            payload.put("unit", unit);
+        }
+
+        // Step 5: Send to device-ingest endpoint
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + targetDevice.getApiKey());
+        headers.set("Content-Type", "application/json");
+
+        String payloadJson = objectMapper.writeValueAsString(payload);
+        logger.debug("📤 Sending individual sensor payload to device-ingest: {}", payloadJson);
+
+        HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+        ResponseEntity<String> response = restTemplate.postForEntity(
+            deviceIngestUrl, request, String.class);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (response.getStatusCode().is2xxSuccessful()) {
+            result.put("success", true);
+            result.put("message", "Data generated and sent successfully");
+            result.put("deviceId", targetDevice.getDeviceId());
+            result.put("dataType", targetConfig.getDataType());
+            result.put("displayName", targetConfig.getDisplayName());
+            result.put("value", generatedValue);
+            result.put("unit", unit);
+            logger.info("✓ Generated and sent {} [{}] = {} {} (device: {})",
+                    targetConfig.getDisplayName(), targetConfig.getDataType(),
+                    generatedValue, unit, targetDevice.getDeviceId());
+        } else {
+            result.put("success", false);
+            result.put("message", "Failed to send data - Status: " + response.getStatusCode());
+            result.put("error", response.getBody());
+        }
+
+        return result;
+    }
+
+    /**
+     * Get a device by its ID directly from Supabase
+     */
+    private com.example.iotsimulatorbackend.model.Device getDeviceById(String deviceId) throws Exception {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("apikey", simulatorService.getSupabaseApiKey());
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String devicesUrl = simulatorService.getDevicesUrl() + "?id=eq." + deviceId;
+            ResponseEntity<String> response = restTemplate.exchange(devicesUrl, HttpMethod.GET, entity, String.class);
+            JsonNode jsonArray = objectMapper.readTree(response.getBody());
+
+            if (jsonArray.size() == 0) {
+                return null;
+            }
+
+            JsonNode deviceNode = jsonArray.get(0);
+            return new com.example.iotsimulatorbackend.model.Device(
+                deviceNode.get("id").asText(),
+                deviceNode.get("elderly_person_id").asText(),
+                deviceNode.get("device_name").asText(),
+                deviceNode.get("device_id").asText(),
+                deviceNode.get("api_key").asText(),
+                deviceNode.has("device_type") && !deviceNode.get("device_type").isNull()
+                    ? deviceNode.get("device_type").asText() : "",
+                deviceNode.has("description") && !deviceNode.get("description").isNull()
+                    ? deviceNode.get("description").asText() : ""
+            );
+        } catch (Exception e) {
+            logger.error("Error fetching device by ID: {}", e.getMessage());
+            throw e;
+        }
+    }
+
+    /**
+     * Generate a value based on data type configuration
+     */
+    private Object generateValue(DataTypeConfig config) {
+        if ("enum".equals(config.getConfigType())) {
+            List<?> values = (List<?>) config.getConfig().get("values");
+            if (values != null && !values.isEmpty()) {
+                return values.get(new Random().nextInt(values.size()));
+            }
+            return "unknown";
+        } else {
+            Map<String, Object> conf = config.getConfig();
+
+            if ("blood_pressure".equals(config.getDataType())) {
+                int systolicMin = ((Number) conf.getOrDefault("systolic_min", 110)).intValue();
+                int systolicMax = ((Number) conf.getOrDefault("systolic_max", 130)).intValue();
+                int diastolicMin = ((Number) conf.getOrDefault("diastolic_min", 70)).intValue();
+                int diastolicMax = ((Number) conf.getOrDefault("diastolic_max", 85)).intValue();
+
+                Map<String, Integer> result = new LinkedHashMap<>();
+                result.put("systolic", systolicMin + new Random().nextInt(systolicMax - systolicMin + 1));
+                result.put("diastolic", diastolicMin + new Random().nextInt(diastolicMax - diastolicMin + 1));
+                return result;
+            } else if ("location".equals(config.getDataType())) {
+                // Special handling for GPS location data (check data type, not config)
+                Map<String, Double> latRange = (Map<String, Double>) conf.get("latitude");
+                Map<String, Double> lonRange = (Map<String, Double>) conf.get("longitude");
+
+                double latMin = -90.0;
+                double latMax = 90.0;
+                double lonMin = -180.0;
+                double lonMax = 180.0;
+
+                if (latRange != null) {
+                    latMin = latRange.getOrDefault("min", -90.0);
+                    latMax = latRange.getOrDefault("max", 90.0);
+                }
+                if (lonRange != null) {
+                    lonMin = lonRange.getOrDefault("min", -180.0);
+                    lonMax = lonRange.getOrDefault("max", 180.0);
+                }
+
+                double latitude = latMin + (Math.random() * (latMax - latMin));
+                double longitude = lonMin + (Math.random() * (lonMax - lonMin));
+
+                // Round to 6 decimal places for realistic GPS coordinates
+                double factor = Math.pow(10, 6);
+                latitude = Math.round(latitude * factor) / factor;
+                longitude = Math.round(longitude * factor) / factor;
+
+                logger.debug("📍 Generated GPS location: latitude={}, longitude={}", latitude, longitude);
+
+                Map<String, Double> result = new LinkedHashMap<>();
+                result.put("latitude", latitude);
+                result.put("longitude", longitude);
+                return result;
+            } else {
+                double min = ((Number) conf.getOrDefault("min", 0)).doubleValue();
+                double max = ((Number) conf.getOrDefault("max", 100)).doubleValue();
+                int precision = ((Number) conf.getOrDefault("precision", 0)).intValue();
+
+                double value = min + (Math.random() * (max - min));
+
+                if (precision > 0) {
+                    double factor = Math.pow(10, precision);
+                    value = Math.round(value * factor) / factor;
+                } else {
+                    value = Math.round(value);
+                }
+
+                return value;
+            }
+        }
+    }
     private class SimulationTask {
         private final String simulationId;
         private final String elderlyPersonId;

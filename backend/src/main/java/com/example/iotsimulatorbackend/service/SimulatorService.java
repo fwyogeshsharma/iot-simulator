@@ -245,6 +245,16 @@ public class SimulatorService {
                                 config.put("diastolic_min", parsedSample.get("diastolic").get("min").asInt());
                                 config.put("diastolic_max", parsedSample.get("diastolic").get("max").asInt());
                             }
+                        } else if ("gps".equals(type)) {
+                            // Special handling for GPS location data
+                            configType = "range";
+                            config.put("type", "gps");
+                            if (parsedSample.has("latitude")) {
+                                config.put("latitude", objectMapper.convertValue(parsedSample.get("latitude"), Map.class));
+                            }
+                            if (parsedSample.has("longitude")) {
+                                config.put("longitude", objectMapper.convertValue(parsedSample.get("longitude"), Map.class));
+                            }
                         }
                     }
                 }
@@ -295,6 +305,15 @@ public class SimulatorService {
             default:
                 return "";
         }
+
+    }
+    // Getter methods for use by other services
+    public String getDevicesUrl() {
+        return devicesUrl;
+    }
+
+    public String getSupabaseApiKey() {
+        return supabaseApiKey;
     }
 
     /**

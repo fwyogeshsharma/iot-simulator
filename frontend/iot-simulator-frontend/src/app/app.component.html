@@ -78,6 +78,33 @@
       <p>No devices found for this elderly person. Please select another person or add devices first.</p>
     </div>
 
+    <!-- Step 3: Individual Sensor Data Generation (shows when single device selected) -->
+    <div class="form-section" *ngIf="selectedSingleDevice && dataTypes.length > 0">
+      <label>🔧 Generate Individual Sensor Data:</label>
+      <div class="sensors-grid">
+        <div *ngFor="let dataType of dataTypes" class="sensor-card">
+          <div class="sensor-header">
+            <h4>{{dataType.displayName}}</h4>
+            <span class="sensor-unit" *ngIf="dataType.unit">({{dataType.unit}})</span>
+          </div>
+          <button
+            type="button"
+            (click)="generateSensorData(dataType.dataType)"
+            [disabled]="generatingDataTypeId === dataType.dataType"
+            class="generate-btn"
+          >
+            <span *ngIf="generatingDataTypeId !== dataType.dataType">Generate</span>
+            <span *ngIf="generatingDataTypeId === dataType.dataType">Generating...</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Last Generated Data Display -->
+      <div class="generated-data" *ngIf="lastGeneratedData && generationMessage">
+        <div class="message success">{{generationMessage}}</div>
+      </div>
+    </div>
+
     <!-- Simulation Controls -->
     <div class="button-group" *ngIf="selectedProfile && devices.length > 0">
       <button
