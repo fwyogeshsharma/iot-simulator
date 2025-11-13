@@ -39,6 +39,25 @@ interface SimulationStatistics {
   dataTypeStats?: any;
 }
 
+interface DataTypeConfig {
+  dataType: string;
+  displayName: string;
+  unit: string;
+  minValue?: number;
+  maxValue?: number;
+}
+
+interface GenerateSensorResponse {
+  success: boolean;
+  message: string;
+  deviceId?: string;
+  dataType?: string;
+  displayName?: string;
+  value?: number | any;
+  unit?: string;
+  error?: string;
+}
+
 interface Settings {
   email: string;
   selectedDeviceIds: string[];
@@ -64,6 +83,13 @@ export class AppComponent implements OnInit, OnDestroy {
   // Statistics
   statistics: SimulationStatistics | null = null;
   statisticsSubscription: Subscription | null = null;
+
+  // Individual sensor data generation
+  dataTypes: DataTypeConfig[] = [];
+  selectedSingleDevice: Device | null = null;
+  generatingDataTypeId: string | null = null;
+  lastGeneratedData: GenerateSensorResponse | null = null;
+  generationMessage = '';
 
   settings: Settings | null = null;
 
@@ -107,6 +133,12 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   onProfileChange() {
+    // Clear previous state when changing elderly person
+    this.selectedDeviceIds.clear();
+    this.devices = [];
+    this.dataTypes = [];
+    this.selectedSingleDevice = null;
+    this.lastGeneratedData = null;
     if (!this.selectedProfile) return;
 
     // Call Supabase directly - query elderly_persons by user_id
@@ -158,9 +190,22 @@ export class AppComponent implements OnInit, OnDestroy {
         // Select all devices by default
         this.selectedDeviceIds = new Set(this.devices.map(d => d.id));
 
-        // Restore previously selected devices from settings if available
+        // Clear data types for new device selection
+        this.dataTypes = [];
+        this.selectedSingleDevice = null;
+
+        // Restore previously selected devices from settings if available and same elderly person
         if (this.settings && this.settings.selectedDeviceIds && this.settings.selectedDeviceIds.length > 0) {
-          this.selectedDeviceIds = new Set(this.settings.selectedDeviceIds);
+          // Only restore if we're loading the same elderly person (check by comparing email in settings)
+          if (this.settings.email === this.selectedProfile?.email) {
+            // Validate that all saved device IDs still exist in current devices
+            const validDeviceIds = this.settings.selectedDeviceIds.filter(id =>
+              this.devices.some(d => d.id === id)
+            );
+            if (validDeviceIds.length > 0) {
+              this.selectedDeviceIds = new Set(validDeviceIds);
+            }
+          }
         }
       },
       error: (err) => {
@@ -176,7 +221,86 @@ export class AppComponent implements OnInit, OnDestroy {
     } else {
       this.selectedDeviceIds.add(deviceId);
     }
+
+    // Load data types if exactly one device is selected
+    this.checkForSingleDeviceSelection();
     this.saveSettings();
+  }
+
+  checkForSingleDeviceSelection() {
+    if (this.selectedDeviceIds.size === 1) {
+      const deviceId = Array.from(this.selectedDeviceIds)[0];
+      this.selectedSingleDevice = this.devices.find(d => d.id === deviceId) || null;
+      if (this.selectedSingleDevice) {
+        this.loadDataTypesForDevice(this.selectedSingleDevice.id);
+      }
+    } else {
+      this.selectedSingleDevice = null;
+      this.dataTypes = [];
+      this.lastGeneratedData = null;
+      this.generationMessage = '';
+    }
+  }
+
+  loadDataTypesForDevice(deviceId: string) {
+    this.http.get<DataTypeConfig[]>(
+      `${environment.backendUrl}/data-types/${deviceId}`
+    ).subscribe({
+      next: (dataTypes) => {
+        this.dataTypes = dataTypes;
+        console.log('Data types loaded:', dataTypes);
+      },
+      error: (err) => {
+        console.error('Failed to load data types:', err);
+        this.dataTypes = [];
+      }
+    });
+  }
+
+  generateSensorData(dataType: string) {
+    if (!this.selectedSingleDevice) return;
+
+    this.generatingDataTypeId = dataType;
+    this.generationMessage = '';
+    this.lastGeneratedData = null;
+
+    this.http.post<GenerateSensorResponse>(
+      `${environment.backendUrl}/sensor/generate`,
+      {},
+      {
+        params: {
+          deviceId: this.selectedSingleDevice.id,
+          dataType: dataType
+        }
+      }
+    ).subscribe({
+      next: (response) => {
+        console.log('Sensor data generated:', response);
+        this.lastGeneratedData = response;
+        if (response.success) {
+          // Format value based on type (handle GPS coordinates as objects)
+          let formattedValue = '';
+          if (typeof response.value === 'object' && response.value !== null) {
+            if ('latitude' in response.value && 'longitude' in response.value) {
+              formattedValue = `Lat: ${response.value.latitude.toFixed(6)}, Lon: ${response.value.longitude.toFixed(6)}`;
+            } else {
+              formattedValue = JSON.stringify(response.value);
+            }
+          } else {
+            formattedValue = `${response.value} ${response.unit}`;
+          }
+          this.generationMessage = `Successfully generated ${response.displayName}: ${formattedValue}`;
+        } else {
+          this.generationMessage = `Error: ${response.message}`;
+        }
+        this.generatingDataTypeId = null;
+      },
+      error: (err) => {
+        console.error('Failed to generate sensor data:', err);
+        this.generationMessage = `Error: ${err.error?.message || err.message}`;
+        this.generatingDataTypeId = null;
+      }
+    });
   }
 
   isDeviceSelected(deviceId: string): boolean {
