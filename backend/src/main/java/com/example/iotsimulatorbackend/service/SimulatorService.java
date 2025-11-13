@@ -3,6 +3,7 @@ package com.example.iotsimulatorbackend.service;
 import com.example.iotsimulatorbackend.model.Device;
 import com.example.iotsimulatorbackend.model.DataTypeInfo;
 import com.example.iotsimulatorbackend.model.DataTypeConfig;
+import com.example.iotsimulatorbackend.model.GeofencePlace;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +40,9 @@ public class SimulatorService {
 
     @Value("${supabase.elderly-persons-url:https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/elderly_persons}")
     private String elderlyPersonsUrl;
+
+    @Value("${supabase.geofence-places-url:https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/geofence_places}")
+    private String geofencePlacesUrl;
 
     @Value("${supabase.apikey}")
     private String supabaseApiKey;
@@ -295,6 +299,9 @@ public class SimulatorService {
                 return "status";
             case "blood_pressure":
                 return "mmHg";
+            case "gps":
+            case "location":
+                return "degrees";
             default:
                 return "";
         }
@@ -307,5 +314,72 @@ public class SimulatorService {
 
     public String getSupabaseApiKey() {
         return supabaseApiKey;
+    }
+
+    /**
+     * Fetch geofence places for an elderly person
+     * The profileId parameter might be a user_id, so we need to look up the actual elderly_person_id
+     */
+    public List<GeofencePlace> getGeofencePlacesByElderlyPersonId(String profileId) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("apikey", supabaseApiKey);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            // Step 1: Try to find the elderly_person_id from elderly_persons table
+            //         where elderly_persons.user_id = profileId
+            String elderlyPersonUrl = elderlyPersonsUrl + "?user_id=eq." + profileId;
+            System.out.println("Looking up elderly person for user ID: " + profileId);
+
+            ResponseEntity<String> elderlyPersonResponse = restTemplate.exchange(elderlyPersonUrl, HttpMethod.GET, entity, String.class);
+            JsonNode elderlyPersonArray = objectMapper.readTree(elderlyPersonResponse.getBody());
+
+            String elderlyPersonId;
+            if (elderlyPersonArray.size() > 0) {
+                // Found the elderly person record - use the actual elderly_person_id
+                elderlyPersonId = elderlyPersonArray.get(0).get("id").asText();
+                System.out.println("✓ Found elderly person ID: " + elderlyPersonId + " for user ID: " + profileId);
+            } else {
+                // No elderly_persons record found - fallback to using profileId directly
+                elderlyPersonId = profileId;
+                System.out.println("⚠️  No elderly person record found. Using profile ID directly: " + profileId);
+            }
+
+            // Step 2: Now query geofence_places using the elderly_person_id
+            String placesQueryUrl = geofencePlacesUrl + "?elderly_person_id=eq." + elderlyPersonId + "&is_active=eq.true";
+            System.out.println("Fetching geofence places from: " + placesQueryUrl);
+
+            ResponseEntity<String> response = restTemplate.exchange(placesQueryUrl, HttpMethod.GET, entity, String.class);
+            JsonNode jsonArray = objectMapper.readTree(response.getBody());
+
+            List<GeofencePlace> places = new ArrayList<>();
+            for (JsonNode placeNode : jsonArray) {
+                GeofencePlace place = new GeofencePlace(
+                    placeNode.get("id").asText(),
+                    placeNode.get("elderly_person_id").asText(),
+                    placeNode.get("name").asText(),
+                    placeNode.get("place_type").asText(),
+                    placeNode.get("latitude").asDouble(),
+                    placeNode.get("longitude").asDouble(),
+                    placeNode.get("radius_meters").asInt()
+                );
+
+                if (placeNode.has("address") && !placeNode.get("address").isNull()) {
+                    place.setAddress(placeNode.get("address").asText());
+                }
+                if (placeNode.has("color") && !placeNode.get("color").isNull()) {
+                    place.setColor(placeNode.get("color").asText());
+                }
+
+                places.add(place);
+            }
+
+            System.out.println("✓ Found " + places.size() + " geofence places for elderly person: " + elderlyPersonId);
+            return places;
+        } catch (Exception e) {
+            System.err.println("Error fetching geofence places from Supabase: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
     }
 }
