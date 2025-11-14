@@ -8,6 +8,7 @@ public class Device {
     private String apiKey;
     private String deviceType;
     private String description;
+    private String location;
 
     // Constructors, getters, setters
     public Device() {}
@@ -44,4 +45,6 @@ public class Device {
     public void setDeviceType(String deviceType) { this.deviceType = deviceType; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public String getLocation() { return location; }
+    public void setLocation(String location) { this.location = location; }
 }

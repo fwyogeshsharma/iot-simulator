@@ -1,12 +1,12 @@
 package com.example.iotsimulatorbackend.controller;
 
-import com.example.iotsimulatorbackend.model.DataTypeInfo;
 import com.example.iotsimulatorbackend.model.DataTypeConfig;
 import com.example.iotsimulatorbackend.model.Device;
 import com.example.iotsimulatorbackend.model.SimulationRequest;
 import com.example.iotsimulatorbackend.model.SimulationResponse;
 import com.example.iotsimulatorbackend.model.SimulationStatistics;
 import com.example.iotsimulatorbackend.model.GeofencePlace;
+import com.example.iotsimulatorbackend.model.SensorGenerateRequest;
 import com.example.iotsimulatorbackend.service.SimulatorService;
 import com.example.iotsimulatorbackend.service.SimulationManager;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,17 +34,6 @@ public class SimulatorController {
     @GetMapping("/data-types/{deviceId}")
     public ResponseEntity<List<DataTypeConfig>> getDataTypes(@PathVariable String deviceId) {
         return ResponseEntity.ok(service.getDataTypesByDeviceId(deviceId));
-    }
-
-    @GetMapping("/ranges/{dataType}")
-    public ResponseEntity<DataTypeInfo> getRange(@PathVariable String dataType) {
-        DataTypeInfo info = service.getRangeForDataType(dataType);
-        return info != null ? ResponseEntity.ok(info) : ResponseEntity.notFound().build();
-    }
-
-    @GetMapping("/units/{dataType}")
-    public ResponseEntity<String> getUnit(@PathVariable String dataType) {
-        return ResponseEntity.ok(service.getUnitForDataType(dataType));
     }
 
     @PostMapping("/simulation/start")
@@ -110,11 +99,13 @@ public class SimulatorController {
     }
 
     @PostMapping("/sensor/generate")
-    public ResponseEntity<?> generateSensorData(
-            @RequestParam String deviceId,
-            @RequestParam String dataType) {
+    public ResponseEntity<?> generateSensorData(@RequestBody SensorGenerateRequest request) {
         try {
-            Map<String, Object> result = simulationManager.generateAndSendSensorData(deviceId, dataType);
+            Map<String, Object> result = simulationManager.generateAndSendSensorData(
+                request.getDeviceId(),
+                request.getDataType(),
+                request.getLocation()
+            );
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(

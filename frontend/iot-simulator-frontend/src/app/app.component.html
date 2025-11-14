@@ -67,15 +67,43 @@
           </label>
         </div>
       </div>
-      <p class="help-text">
-        Selected: {{selectedDeviceIds.size}} of {{devices.length}} devices
-        <span *ngIf="selectedDeviceIds.size === 0">(Will use all {{devices.length}} devices)</span>
-      </p>
+      <div class="device-selection-controls">
+        <p class="help-text">
+          Selected: {{selectedDeviceIds.size}} of {{devices.length}} devices
+          <span *ngIf="selectedDeviceIds.size === 0" class="warning-text">(No devices selected - please select at least one)</span>
+        </p>
+        <div class="selection-buttons" *ngIf="devices.length > 1">
+          <button
+            type="button"
+            class="selection-btn"
+            (click)="selectAllDevices()"
+            [disabled]="isSimulating || selectedDeviceIds.size === devices.length"
+          >
+            Select All
+          </button>
+          <button
+            type="button"
+            class="selection-btn"
+            (click)="unselectAllDevices()"
+            [disabled]="isSimulating || selectedDeviceIds.size === 0"
+          >
+            Unselect All
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- No Devices Message -->
     <div class="form-section info-message" *ngIf="selectedProfile && devices.length === 0">
       <p>No devices found for this elderly person. Please select another person or add devices first.</p>
+    </div>
+
+    <!-- Info Message: Single Device Selection Required for Individual Sensor Data -->
+    <div class="form-section info-message" *ngIf="selectedProfile && devices.length > 0 && !selectedSingleDevice">
+      <p>
+        <strong>💡 Tip:</strong> Select exactly <strong>one device</strong> to generate individual sensor data.
+        This allows you to test specific sensors with the "Generate" button for each data type.
+      </p>
     </div>
 
     <!-- Step 3: Individual Sensor Data Generation (shows when single device selected) -->
@@ -110,7 +138,7 @@
       <button
         type="button"
         (click)="startSimulation()"
-        [disabled]="isSimulating"
+        [disabled]="isSimulating || selectedDeviceIds.size === 0"
         class="start-btn"
       >
         ▶️ Start Simulation

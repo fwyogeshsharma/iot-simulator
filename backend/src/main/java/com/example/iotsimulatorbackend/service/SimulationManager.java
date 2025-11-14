@@ -164,7 +164,7 @@ public class SimulationManager {
      * Generate and send data for a single sensor/device
      */
 
-    public Map<String, Object> generateAndSendSensorData(String deviceId, String dataType) throws Exception {
+    public Map<String, Object> generateAndSendSensorData(String deviceId, String dataType, String location) throws Exception {
         // Step 1: Get the device information directly from Supabase by device ID
         com.example.iotsimulatorbackend.model.Device targetDevice = getDeviceById(deviceId);
 
@@ -215,13 +215,22 @@ public class SimulationManager {
                     payload.put("unit", unit);
                 }
 
+                // Include location if provided
+                if (location != null && !location.trim().isEmpty()) {
+                    payload.put("location", location);
+                }
+
                 // Send to device-ingest endpoint
                 HttpHeaders headers = new HttpHeaders();
                 headers.set("Authorization", "Bearer " + targetDevice.getApiKey());
                 headers.set("Content-Type", "application/json");
 
                 String payloadJson = objectMapper.writeValueAsString(payload);
-                logger.debug("📤 Sending GPS for geofence '{}': {}", selectedGeofence.getName(), payloadJson);
+                if (location != null && !location.trim().isEmpty()) {
+                    logger.debug("📤 Sending GPS for geofence '{}' at location '{}': {}", selectedGeofence.getName(), location, payloadJson);
+                } else {
+                    logger.debug("📤 Sending GPS for geofence '{}': {}", selectedGeofence.getName(), payloadJson);
+                }
 
                 HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
                 ResponseEntity<String> response = restTemplate.postForEntity(
@@ -272,13 +281,22 @@ public class SimulationManager {
             payload.put("unit", unit);
         }
 
+        // Include location if provided
+        if (location != null && !location.trim().isEmpty()) {
+            payload.put("location", location);
+        }
+
         // Step 6: Send to device-ingest endpoint
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + targetDevice.getApiKey());
         headers.set("Content-Type", "application/json");
 
         String payloadJson = objectMapper.writeValueAsString(payload);
-        logger.debug("📤 Sending individual sensor payload to device-ingest: {}", payloadJson);
+        if (location != null && !location.trim().isEmpty()) {
+            logger.debug("📤 Sending individual sensor payload for location '{}' to device-ingest: {}", location, payloadJson);
+        } else {
+            logger.debug("📤 Sending individual sensor payload to device-ingest: {}", payloadJson);
+        }
 
         HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
         ResponseEntity<String> response = restTemplate.postForEntity(
@@ -293,9 +311,15 @@ public class SimulationManager {
             result.put("displayName", targetConfig.getDisplayName());
             result.put("value", generatedValue);
             result.put("unit", unit);
-            logger.info("✓ Generated and sent {} [{}] = {} {}",
-                    targetConfig.getDisplayName(), targetConfig.getDataType(),
-                    generatedValue, unit != null ? unit : "");
+            if (location != null && !location.trim().isEmpty()) {
+                logger.info("✓ Generated and sent {} [{}] = {} {} at location '{}'",
+                        targetConfig.getDisplayName(), targetConfig.getDataType(),
+                        generatedValue, unit != null ? unit : "", location);
+            } else {
+                logger.info("✓ Generated and sent {} [{}] = {} {}",
+                        targetConfig.getDisplayName(), targetConfig.getDataType(),
+                        generatedValue, unit != null ? unit : "");
+            }
         } else {
             result.put("success", false);
             result.put("message", "Failed to send data - Status: " + response.getStatusCode());
@@ -323,7 +347,7 @@ public class SimulationManager {
             }
 
             JsonNode deviceNode = jsonArray.get(0);
-            return new com.example.iotsimulatorbackend.model.Device(
+            com.example.iotsimulatorbackend.model.Device device = new com.example.iotsimulatorbackend.model.Device(
                 deviceNode.get("id").asText(),
                 deviceNode.get("elderly_person_id").asText(),
                 deviceNode.get("device_name").asText(),
@@ -334,6 +358,13 @@ public class SimulationManager {
                 deviceNode.has("description") && !deviceNode.get("description").isNull()
                     ? deviceNode.get("description").asText() : ""
             );
+
+            // Set location if available
+            if (deviceNode.has("location") && !deviceNode.get("location").isNull()) {
+                device.setLocation(deviceNode.get("location").asText());
+            }
+
+            return device;
         } catch (Exception e) {
             logger.error("Error fetching device by ID: {}", e.getMessage());
             throw e;
@@ -371,6 +402,9 @@ public class SimulationManager {
      * Generate a value based on data type configuration
      */
     private Object generateValue(DataTypeConfig config) {
+        logger.debug("🔧 Generating value for data type: {}, configType: {}, config: {}",
+            config.getDataType(), config.getConfigType(), config.getConfig());
+
         if ("enum".equals(config.getConfigType())) {
             List<?> values = (List<?>) config.getConfig().get("values");
             if (values != null && !values.isEmpty()) {
@@ -428,6 +462,8 @@ public class SimulationManager {
                 double max = ((Number) conf.getOrDefault("max", 100)).doubleValue();
                 int precision = ((Number) conf.getOrDefault("precision", 0)).intValue();
 
+                logger.debug("📊 Generating random number - min: {}, max: {}, precision: {}", min, max, precision);
+
                 double value = min + (Math.random() * (max - min));
 
                 if (precision > 0) {
@@ -437,6 +473,7 @@ public class SimulationManager {
                     value = Math.round(value);
                 }
 
+                logger.debug("✓ Generated value: {}", value);
                 return value;
             }
         }
@@ -633,6 +670,11 @@ public class SimulationManager {
                 String unit = config.getUnit();
                 if (unit != null && !unit.isEmpty() && !unit.trim().isEmpty()) {
                     payload.put("unit", unit);
+                }
+
+                // Include location if available
+                if (device.getLocation() != null && !device.getLocation().trim().isEmpty()) {
+                    payload.put("location", device.getLocation());
                 }
 
                 // Send to device-ingest endpoint

@@ -1,7 +1,6 @@
 package com.example.iotsimulatorbackend.service;
 
 import com.example.iotsimulatorbackend.model.Device;
-import com.example.iotsimulatorbackend.model.DataTypeInfo;
 import com.example.iotsimulatorbackend.model.DataTypeConfig;
 import com.example.iotsimulatorbackend.model.GeofencePlace;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -15,14 +14,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import javax.annotation.PostConstruct;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class SimulatorService {
-    private Map<String, DataTypeInfo> dataTypeRanges = new HashMap<>();
-
     @Autowired
     private RestTemplate restTemplate;
 
@@ -49,30 +45,6 @@ public class SimulatorService {
 
     @Autowired
     private ObjectMapper objectMapper;
-
-    @PostConstruct
-    public void init() {
-        // Initialize data type ranges
-        initializeDataTypeRanges();
-    }
-
-    private void initializeDataTypeRanges() {
-        // Hardcode ranges based on data type definitions
-        dataTypeRanges.put("heart_rate", new DataTypeInfo("heart_rate", "range", Map.of("min", 60, "max", 100)));
-        dataTypeRanges.put("temperature", new DataTypeInfo("temperature", "range", Map.of("min", 36, "max", 42))); // Body temp
-        dataTypeRanges.put("oxygen_saturation", new DataTypeInfo("oxygen_saturation", "range", Map.of("min", 90, "max", 100)));
-        dataTypeRanges.put("movement", new DataTypeInfo("movement", "range", Map.of("min", 0, "max", 100)));
-        dataTypeRanges.put("duration", new DataTypeInfo("duration", "range", Map.of("min", 0, "max", 1440))); // Minutes in day
-        dataTypeRanges.put("bmi", new DataTypeInfo("bmi", "range", Map.of("min", 18.5, "max", 30)));
-        dataTypeRanges.put("door_status", new DataTypeInfo("door_status", "enum", Map.of("values", List.of("open", "closed"))));
-        dataTypeRanges.put("movement_detected", new DataTypeInfo("movement_detected", "enum", Map.of("values", List.of(true, false))));
-        dataTypeRanges.put("presence", new DataTypeInfo("presence", "enum", Map.of("values", List.of(true, false))));
-        dataTypeRanges.put("bed_occupancy", new DataTypeInfo("bed_occupancy", "enum", Map.of("values", List.of("occupied", "vacant"))));
-        dataTypeRanges.put("seat_occupancy", new DataTypeInfo("seat_occupancy", "enum", Map.of("values", List.of("occupied", "vacant"))));
-        dataTypeRanges.put("orientation", new DataTypeInfo("orientation", "range", Map.of("min", 0, "max", 360)));
-        dataTypeRanges.put("activity", new DataTypeInfo("activity", "range", Map.of("min", 0, "max", 100)));
-        dataTypeRanges.put("blood_pressure", new DataTypeInfo("blood_pressure", "range", Map.of("systolic_min", 90, "systolic_max", 140, "diastolic_min", 60, "diastolic_max", 90)));
-    }
 
     public List<Device> getDevicesByElderlyPersonId(String profileId) {
         try {
@@ -143,6 +115,12 @@ public class SimulatorService {
                     deviceTypeCode,
                     description
                 );
+
+                // Set location if available
+                if (deviceNode.has("location") && !deviceNode.get("location").isNull()) {
+                    device.setLocation(deviceNode.get("location").asText());
+                }
+
                 devices.add(device);
             }
 
@@ -216,8 +194,17 @@ public class SimulatorService {
                 Map<String, Object> config = new HashMap<>();
 
                 if (sampleConfig != null && !sampleConfig.isNull()) {
-                    String sampleStr = sampleConfig.asText();
-                    JsonNode parsedSample = objectMapper.readTree(sampleStr);
+                    // Check if it's already a JSON object or a string
+                    JsonNode parsedSample;
+                    if (sampleConfig.isTextual()) {
+                        // It's a string, parse it
+                        String sampleStr = sampleConfig.asText();
+                        parsedSample = objectMapper.readTree(sampleStr);
+                    } else {
+                        // It's already a JSON object
+                        parsedSample = sampleConfig;
+                    }
+                    System.out.println("📝 Parsing sample_data_config for " + dataType + ": " + parsedSample);
 
                     // Determine if it's range or enum based on sample_data_config content
                     if (parsedSample.has("type")) {
@@ -235,6 +222,7 @@ public class SimulatorService {
                             if (parsedSample.has("min")) config.put("min", parsedSample.get("min").asDouble());
                             if (parsedSample.has("max")) config.put("max", parsedSample.get("max").asDouble());
                             if (parsedSample.has("precision")) config.put("precision", parsedSample.get("precision").asInt());
+                            System.out.println("📊 Parsed random_number config for " + dataType + ": " + config);
                         } else if ("blood_pressure".equals(type)) {
                             configType = "range";
                             if (parsedSample.has("systolic")) {
@@ -272,41 +260,6 @@ public class SimulatorService {
         }
     }
 
-    public DataTypeInfo getRangeForDataType(String dataType) {
-        return dataTypeRanges.get(dataType);
-    }
-
-    public String getUnitForDataType(String dataType) {
-        // Hardcoded units
-        switch (dataType) {
-            case "heart_rate":
-                return "bpm";
-            case "temperature":
-                return "°C";
-            case "oxygen_saturation":
-                return "%";
-            case "movement":
-                return "%";
-            case "duration":
-                return "minutes";
-            case "bmi":
-                return "kg/m²";
-            case "door_status":
-            case "movement_detected":
-            case "presence":
-            case "bed_occupancy":
-            case "seat_occupancy":
-                return "status";
-            case "blood_pressure":
-                return "mmHg";
-            case "gps":
-            case "location":
-                return "degrees";
-            default:
-                return "";
-        }
-
-    }
     // Getter methods for use by other services
     public String getDevicesUrl() {
         return devicesUrl;
