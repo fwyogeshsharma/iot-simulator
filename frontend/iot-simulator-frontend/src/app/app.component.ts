@@ -17,6 +17,7 @@ interface Device {
   device_type?: string;
   description?: string;
   elderly_person_id?: string;
+  location?: string;
 }
 
 interface SimulationResponse {
@@ -215,6 +216,9 @@ export class AppComponent implements OnInit, OnDestroy {
             }
           }
         }
+
+        // Check if only one device is selected and load sensors automatically
+        this.checkForSingleDeviceSelection();
       },
       error: (err) => {
         console.error('Failed to load devices:', err);
@@ -231,6 +235,18 @@ export class AppComponent implements OnInit, OnDestroy {
     }
 
     // Load data types if exactly one device is selected
+    this.checkForSingleDeviceSelection();
+    this.saveSettings();
+  }
+
+  selectAllDevices() {
+    this.selectedDeviceIds = new Set(this.devices.map(d => d.id));
+    this.checkForSingleDeviceSelection();
+    this.saveSettings();
+  }
+
+  unselectAllDevices() {
+    this.selectedDeviceIds.clear();
     this.checkForSingleDeviceSelection();
     this.saveSettings();
   }
@@ -272,15 +288,19 @@ export class AppComponent implements OnInit, OnDestroy {
     this.generationMessage = '';
     this.lastGeneratedData = null;
 
+    const requestBody: any = {
+      deviceId: this.selectedSingleDevice.id,
+      dataType: dataType
+    };
+
+    // Include location if available
+    if (this.selectedSingleDevice.location) {
+      requestBody.location = this.selectedSingleDevice.location;
+    }
+
     this.http.post<GenerateSensorResponse>(
       `${environment.backendUrl}/sensor/generate`,
-      {},
-      {
-        params: {
-          deviceId: this.selectedSingleDevice.id,
-          dataType: dataType
-        }
-      }
+      requestBody
     ).subscribe({
       next: (response) => {
         console.log('Sensor data generated:', response);
