@@ -204,7 +204,6 @@ public class SimulatorService {
                         // It's already a JSON object
                         parsedSample = sampleConfig;
                     }
-                    System.out.println("📝 Parsing sample_data_config for " + dataType + ": " + parsedSample);
 
                     // Determine if it's range or enum based on sample_data_config content
                     if (parsedSample.has("type")) {
@@ -222,7 +221,6 @@ public class SimulatorService {
                             if (parsedSample.has("min")) config.put("min", parsedSample.get("min").asDouble());
                             if (parsedSample.has("max")) config.put("max", parsedSample.get("max").asDouble());
                             if (parsedSample.has("precision")) config.put("precision", parsedSample.get("precision").asInt());
-                            System.out.println("📊 Parsed random_number config for " + dataType + ": " + config);
                         } else if ("blood_pressure".equals(type)) {
                             configType = "range";
                             if (parsedSample.has("systolic")) {

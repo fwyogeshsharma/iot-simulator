@@ -165,11 +165,23 @@ public class SimulationManager {
      */
 
     public Map<String, Object> generateAndSendSensorData(String deviceId, String dataType, String location) throws Exception {
+        long startTime = System.currentTimeMillis();
+
+        logger.info("═══════════════════════════════════════════════════════════════════");
+        logger.info("📊 INDIVIDUAL SENSOR DATA GENERATION");
+        logger.info("═══════════════════════════════════════════════════════════════════");
+
         // Step 1: Get the device information directly from Supabase by device ID
         com.example.iotsimulatorbackend.model.Device targetDevice = getDeviceById(deviceId);
 
         if (targetDevice == null) {
+            logger.error("❌ FAILED: Device not found with ID: {}", deviceId);
             throw new Exception("Device not found with ID: " + deviceId);
+        }
+
+        logger.info("📱 Device: {} ({})", targetDevice.getDeviceName(), targetDevice.getDeviceId());
+        if (location != null && !location.trim().isEmpty()) {
+            logger.info("📍 Location: {}", location);
         }
 
         // Step 2: Get the data type configuration
@@ -184,8 +196,11 @@ public class SimulationManager {
         }
 
         if (targetConfig == null) {
+            logger.error("❌ FAILED: Sensor '{}' not found for this device", dataType);
             throw new Exception("Data type not found: " + dataType + " for device: " + deviceId);
         }
+
+        logger.info("🔧 Sensor: {} ({})", targetConfig.getDisplayName(), dataType);
 
         String unit = targetConfig.getUnit();
         if (unit != null && unit.trim().isEmpty()) {
@@ -200,8 +215,7 @@ public class SimulationManager {
             if (geofences != null && !geofences.isEmpty()) {
                 // Pick a random geofence
                 GeofencePlace selectedGeofence = geofences.get(new Random().nextInt(geofences.size()));
-                logger.info("🎯 Generating GPS data for random geofence '{}' for elderly person: {}",
-                    selectedGeofence.getName(), targetDevice.getElderlyPersonId());
+                logger.info("   → Generating GPS within geofence: {}", selectedGeofence.getName());
 
                 // Generate GPS coordinates within the selected geofence
                 Map<String, Double> gpsCoords = generateGpsWithinGeofence(selectedGeofence);
@@ -226,15 +240,12 @@ public class SimulationManager {
                 headers.set("Content-Type", "application/json");
 
                 String payloadJson = objectMapper.writeValueAsString(payload);
-                if (location != null && !location.trim().isEmpty()) {
-                    logger.debug("📤 Sending GPS for geofence '{}' at location '{}': {}", selectedGeofence.getName(), location, payloadJson);
-                } else {
-                    logger.debug("📤 Sending GPS for geofence '{}': {}", selectedGeofence.getName(), payloadJson);
-                }
 
                 HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+                long sendTime = System.currentTimeMillis();
                 ResponseEntity<String> response = restTemplate.postForEntity(
                     deviceIngestUrl, request, String.class);
+                long responseTime = System.currentTimeMillis() - sendTime;
 
                 Map<String, Object> result = new LinkedHashMap<>();
                 if (response.getStatusCode().is2xxSuccessful()) {
@@ -254,14 +265,20 @@ public class SimulationManager {
                     result.put("displayName", targetConfig.getDisplayName());
                     result.put("generatedLocations", generatedLocations);
 
-                    logger.info("✓ Generated and sent GPS data for geofence '{}' at ({}, {})",
-                        selectedGeofence.getName(), gpsCoords.get("latitude"), gpsCoords.get("longitude"));
+                    long totalTime = System.currentTimeMillis() - startTime;
+                    logger.info("   → Value: Lat {}, Lon {}",
+                        String.format("%.6f", gpsCoords.get("latitude")),
+                        String.format("%.6f", gpsCoords.get("longitude")));
+                    logger.info("✅ SUCCESS ({}ms total, {}ms send)", totalTime, responseTime);
+                    logger.info("═══════════════════════════════════════════════════════════════════");
                 } else {
                     result.put("success", false);
                     result.put("message", "Failed to send GPS data - Status: " + response.getStatusCode());
                     result.put("error", response.getBody());
-                    logger.warn("✗ Failed to send GPS data for geofence '{}': {}",
-                        selectedGeofence.getName(), response.getStatusCode());
+                    long totalTime = System.currentTimeMillis() - startTime;
+                    logger.error("❌ FAILED: Device-ingest returned {} ({}ms)", response.getStatusCode(), totalTime);
+                    logger.error("   Response: {}", response.getBody());
+                    logger.info("═══════════════════════════════════════════════════════════════════");
                 }
 
                 return result;
@@ -270,6 +287,15 @@ public class SimulationManager {
 
         // Step 4: For non-location data, generate single value as before
         Object generatedValue = generateValue(targetConfig);
+
+        // Format the value for display
+        String valueDisplay;
+        if (generatedValue instanceof Map) {
+            valueDisplay = generatedValue.toString();
+        } else {
+            valueDisplay = generatedValue + (unit != null ? " " + unit : "");
+        }
+        logger.info("   → Value: {}", valueDisplay);
 
         // Step 5: Create payload
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -292,38 +318,45 @@ public class SimulationManager {
         headers.set("Content-Type", "application/json");
 
         String payloadJson = objectMapper.writeValueAsString(payload);
-        if (location != null && !location.trim().isEmpty()) {
-            logger.debug("📤 Sending individual sensor payload for location '{}' to device-ingest: {}", location, payloadJson);
-        } else {
-            logger.debug("📤 Sending individual sensor payload to device-ingest: {}", payloadJson);
-        }
 
         HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
-        ResponseEntity<String> response = restTemplate.postForEntity(
-            deviceIngestUrl, request, String.class);
 
         Map<String, Object> result = new LinkedHashMap<>();
-        if (response.getStatusCode().is2xxSuccessful()) {
-            result.put("success", true);
-            result.put("message", "Data generated and sent successfully");
-            result.put("deviceId", targetDevice.getDeviceId());
-            result.put("dataType", targetConfig.getDataType());
-            result.put("displayName", targetConfig.getDisplayName());
-            result.put("value", generatedValue);
-            result.put("unit", unit);
-            if (location != null && !location.trim().isEmpty()) {
-                logger.info("✓ Generated and sent {} [{}] = {} {} at location '{}'",
-                        targetConfig.getDisplayName(), targetConfig.getDataType(),
-                        generatedValue, unit != null ? unit : "", location);
+        try {
+            long sendTime = System.currentTimeMillis();
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                deviceIngestUrl, request, String.class);
+            long responseTime = System.currentTimeMillis() - sendTime;
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                result.put("success", true);
+                result.put("message", "Data generated and sent successfully");
+                result.put("deviceId", targetDevice.getDeviceId());
+                result.put("dataType", targetConfig.getDataType());
+                result.put("displayName", targetConfig.getDisplayName());
+                result.put("value", generatedValue);
+                result.put("unit", unit);
+
+                long totalTime = System.currentTimeMillis() - startTime;
+                logger.info("✅ SUCCESS ({}ms total, {}ms send)", totalTime, responseTime);
+                logger.info("═══════════════════════════════════════════════════════════════════");
             } else {
-                logger.info("✓ Generated and sent {} [{}] = {} {}",
-                        targetConfig.getDisplayName(), targetConfig.getDataType(),
-                        generatedValue, unit != null ? unit : "");
+                long totalTime = System.currentTimeMillis() - startTime;
+                logger.error("❌ FAILED: Device-ingest returned {} ({}ms)", response.getStatusCode(), totalTime);
+                logger.error("   Response: {}", response.getBody());
+                logger.info("═══════════════════════════════════════════════════════════════════");
+                result.put("success", false);
+                result.put("message", "Failed to send data - Status: " + response.getStatusCode());
+                result.put("error", response.getBody());
             }
-        } else {
+        } catch (Exception e) {
+            long totalTime = System.currentTimeMillis() - startTime;
+            logger.error("❌ FAILED: {} ({}ms)", e.getMessage(), totalTime);
+            logger.error("   Payload: {}", payloadJson);
+            logger.info("═══════════════════════════════════════════════════════════════════");
             result.put("success", false);
-            result.put("message", "Failed to send data - Status: " + response.getStatusCode());
-            result.put("error", response.getBody());
+            result.put("message", "Error sending data to device-ingest");
+            result.put("error", e.getMessage());
         }
 
         return result;
@@ -402,9 +435,6 @@ public class SimulationManager {
      * Generate a value based on data type configuration
      */
     private Object generateValue(DataTypeConfig config) {
-        logger.debug("🔧 Generating value for data type: {}, configType: {}, config: {}",
-            config.getDataType(), config.getConfigType(), config.getConfig());
-
         if ("enum".equals(config.getConfigType())) {
             List<?> values = (List<?>) config.getConfig().get("values");
             if (values != null && !values.isEmpty()) {
@@ -462,8 +492,6 @@ public class SimulationManager {
                 double max = ((Number) conf.getOrDefault("max", 100)).doubleValue();
                 int precision = ((Number) conf.getOrDefault("precision", 0)).intValue();
 
-                logger.debug("📊 Generating random number - min: {}, max: {}, precision: {}", min, max, precision);
-
                 double value = min + (Math.random() * (max - min));
 
                 if (precision > 0) {
@@ -473,7 +501,6 @@ public class SimulationManager {
                     value = Math.round(value);
                 }
 
-                logger.debug("✓ Generated value: {}", value);
                 return value;
             }
         }
@@ -532,19 +559,11 @@ public class SimulationManager {
             isRunning = true;
 
             // Fetch geofence places for location-based simulation
-            logger.info("📍 Attempting to load geofence places for elderly person: {}", elderlyPersonId);
             geofencePlaces = simulatorService.getGeofencePlacesByElderlyPersonId(elderlyPersonId);
-            logger.info("📍 Geofence places loaded: {} places", geofencePlaces.size());
             if (!geofencePlaces.isEmpty()) {
-                logger.info("📍 Loaded {} geofence places for location-based simulation", geofencePlaces.size());
-                for (GeofencePlace place : geofencePlaces) {
-                    logger.info("   ├─ {} ({}) - Lat: {}, Lon: {}, Radius: {}m",
-                            place.getName(), place.getPlaceType(),
-                            place.getLatitude(), place.getLongitude(), place.getRadiusMeters());
-                }
+                logger.info("📍 Loaded {} geofence places for GPS simulation", geofencePlaces.size());
             } else {
-                logger.warn("⚠️  NO GEOFENCE PLACES FOUND! Location simulation will use random values.");
-                logger.warn("    Please ensure geofence places are created for elderly person ID: {}", elderlyPersonId);
+                logger.warn("⚠️  No geofence places found - GPS will use random values");
             }
 
             // For each device, get its data type configs and start scheduling
@@ -559,18 +578,13 @@ public class SimulationManager {
                     }
 
                     // For each data type config, schedule generation
+                    logger.info("   └─ {} has {} sensors", device.getDeviceName(), configs.size());
                     for (DataTypeConfig config : configs) {
-                        logger.debug("   Data type: {} - ConfigType: {}", config.getDataType(), config.getConfigType());
-
                         // Initialize LocationGenerator for GPS/location devices
                         if (("gps".equals(config.getDataType()) || "location".equals(config.getDataType()))) {
                             String generatorKey = device.getId() + "_" + config.getDataType();
                             if (!geofencePlaces.isEmpty()) {
                                 locationGenerators.put(generatorKey, new LocationGenerator(geofencePlaces));
-                                logger.info("✅ Initialized LocationGenerator for device {} ({}) - will use {} geofence places",
-                                        device.getDeviceName(), device.getDeviceId(), geofencePlaces.size());
-                            } else {
-                                logger.warn("⚠️  Not initializing LocationGenerator - no geofence places loaded");
                             }
                         }
 
@@ -602,20 +616,6 @@ public class SimulationManager {
                 intervalDisplay = (intervalSeconds / 3600) + "h";
             }
 
-            // Calculate next execution times for logging
-            long nowMillis = System.currentTimeMillis();
-            long nextExecutionMillis = nowMillis; // First execution is immediate (initialDelay=0)
-            long subsequentExecutionMillis = nowMillis + (intervalSeconds * 1000);
-
-            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("HH:mm:ss");
-            String nextExecutionTime = sdf.format(new java.util.Date(nextExecutionMillis));
-            String subsequentExecutionTime = sdf.format(new java.util.Date(subsequentExecutionMillis));
-
-            logger.info("⏱️  Scheduling {} for device {} ({}) - Frequency: {}/day",
-                    config.getDisplayName(), device.getDeviceName(), device.getDeviceId(),
-                    frequencyPerDay);
-            logger.info("    Interval: {} | First execution: {} (now) | Next: {} | Then every {}",
-                    intervalDisplay, nextExecutionTime, subsequentExecutionTime, intervalDisplay);
 
             // Create a task key for tracking
             String taskKey = device.getId() + "_" + config.getDataType();
