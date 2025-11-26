@@ -11,13 +11,18 @@ interface Profile {
 
 interface Device {
   id: string;
-  device_name: string;
-  device_id: string;
-  api_key: string;
-  device_type?: string;
+  deviceName: string;
+  deviceId: string;
+  apiKey: string;
+  deviceType?: string;
   description?: string;
-  elderly_person_id?: string;
+  elderlyPersonId?: string;
   location?: string;
+  companyId?: string;
+  modelId?: string;
+  companyName?: string;
+  modelName?: string;
+  modelSpecifications?: any;
 }
 
 interface SimulationResponse {
@@ -67,6 +72,24 @@ interface GenerateSensorResponse {
   totalGeofences?: number;
 }
 
+interface ModelDataResponse {
+  success: boolean;
+  message: string;
+  deviceId?: string;
+  modelName?: string;
+  companyName?: string;
+  totalDataPoints?: number;
+  successCount?: number;
+  failCount?: number;
+  dataPoints?: Array<{
+    data_type: string;
+    value: any;
+    unit?: string;
+  }>;
+  elapsedMs?: number;
+  error?: string;
+}
+
 interface Settings {
   email: string;
   selectedDeviceIds: string[];
@@ -99,6 +122,11 @@ export class AppComponent implements OnInit, OnDestroy {
   generatingDataTypeId: string | null = null;
   lastGeneratedData: GenerateSensorResponse | null = null;
   generationMessage = '';
+
+  // Model-based data generation
+  generatingModelData = false;
+  lastModelDataResponse: ModelDataResponse | null = null;
+  modelDataMessage = '';
 
   settings: Settings | null = null;
 
@@ -182,18 +210,13 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   loadDevicesForElderlyPerson(elderlyPersonId: string) {
-    const devicesUrl = `${environment.devicesUrl}?elderly_person_id=eq.${elderlyPersonId}`;
-    console.log('Loading devices from:', devicesUrl);
+    // Use backend API to get devices with company/model info
+    const backendDevicesUrl = `${environment.backendUrl}/devices/${this.selectedProfile?.id}`;
+    console.log('Loading devices from backend:', backendDevicesUrl);
 
-    const headers = new HttpHeaders({
-      'Authorization': `Bearer ${environment.profilesApiKey}`,
-      'Content-Type': 'application/json',
-      'apikey': environment.profilesApiKey
-    });
-
-    this.http.get<Device[]>(devicesUrl, { headers }).subscribe({
+    this.http.get<Device[]>(backendDevicesUrl).subscribe({
       next: (data) => {
-        console.log('Devices loaded:', data);
+        console.log('Devices loaded from backend:', data);
         this.devices = data || [];
 
         // Select all devices by default
@@ -202,6 +225,8 @@ export class AppComponent implements OnInit, OnDestroy {
         // Clear data types for new device selection
         this.dataTypes = [];
         this.selectedSingleDevice = null;
+        this.lastModelDataResponse = null;
+        this.modelDataMessage = '';
 
         // Restore previously selected devices from settings if available and same elderly person
         if (this.settings && this.settings.selectedDeviceIds && this.settings.selectedDeviceIds.length > 0) {
@@ -221,7 +246,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.checkForSingleDeviceSelection();
       },
       error: (err) => {
-        console.error('Failed to load devices:', err);
+        console.error('Failed to load devices from backend:', err);
         this.devices = [];
       }
     });
@@ -334,6 +359,35 @@ export class AppComponent implements OnInit, OnDestroy {
         console.error('Failed to generate sensor data:', err);
         this.generationMessage = `Error: ${err.error?.message || err.message}`;
         this.generatingDataTypeId = null;
+      }
+    });
+  }
+
+  generateModelBasedData() {
+    if (!this.selectedSingleDevice || !this.selectedSingleDevice.modelId) return;
+
+    this.generatingModelData = true;
+    this.modelDataMessage = '';
+    this.lastModelDataResponse = null;
+
+    this.http.post<ModelDataResponse>(
+      `${environment.backendUrl}/sensor/generate-model-data/${this.selectedSingleDevice.id}`,
+      {}
+    ).subscribe({
+      next: (response) => {
+        console.log('Model-based data generated:', response);
+        this.lastModelDataResponse = response;
+        if (response.success) {
+          this.modelDataMessage = `Successfully generated ${response.successCount} data points for ${response.modelName} (${response.companyName})`;
+        } else {
+          this.modelDataMessage = response.message || 'Failed to generate model data';
+        }
+        this.generatingModelData = false;
+      },
+      error: (err) => {
+        console.error('Failed to generate model-based data:', err);
+        this.modelDataMessage = `Error: ${err.error?.error || err.message}`;
+        this.generatingModelData = false;
       }
     });
   }
@@ -468,6 +522,16 @@ export class AppComponent implements OnInit, OnDestroy {
     this.selectedDeviceIds.clear();
     this.devices = [];
     this.statistics = null;
+    // Clear individual sensor data generation state
+    this.dataTypes = [];
+    this.selectedSingleDevice = null;
+    this.generatingDataTypeId = null;
+    this.lastGeneratedData = null;
+    this.generationMessage = '';
+    // Clear model-based data generation state
+    this.generatingModelData = false;
+    this.lastModelDataResponse = null;
+    this.modelDataMessage = '';
     this.message = 'Settings reset.';
     if (this.isSimulating) {
       this.stopSimulation();

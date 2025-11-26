@@ -652,3 +652,194 @@ button:disabled {
   margin-top: 20px;
   animation: slideIn 0.3s ease;
 }
+
+/* Company and Model Info */
+.device-company {
+  color: #667eea;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.device-model {
+  color: #764ba2;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Section Header Styling */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.section-header label {
+  margin: 0;
+  font-size: 16px;
+}
+
+.section-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+/* Model-Based Data Section */
+.model-section {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  border-left: 4px solid #4caf50;
+  border: 2px solid #a5d6a7;
+  border-left: 4px solid #4caf50;
+  position: relative;
+  overflow: hidden;
+}
+
+.model-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100px;
+  height: 100px;
+  background: radial-gradient(circle at top right, rgba(76, 175, 80, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.model-section .section-header label {
+  color: #2e7d32;
+}
+
+/* Sensor Data Section */
+.sensor-section {
+  background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+  border-left: 4px solid #9c27b0;
+  border: 2px solid #ce93d8;
+  border-left: 4px solid #9c27b0;
+  position: relative;
+  overflow: hidden;
+}
+
+.sensor-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100px;
+  height: 100px;
+  background: radial-gradient(circle at top right, rgba(156, 39, 176, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.sensor-section .section-header label {
+  color: #7b1fa2;
+}
+
+/* Model Info Section */
+.model-info {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.model-info p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.model-info .help-text {
+  background: transparent;
+  border-left: none;
+  padding: 8px 0 0 0;
+  color: #555;
+}
+
+/* Model Badge Styling */
+.model-badge {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.badge.company {
+  background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+  color: white;
+}
+
+.badge.model {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+/* Generate Model Data Button */
+.generate-model-btn {
+  background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+  color: white;
+  padding: 14px 24px !important;
+  font-size: 14px !important;
+  width: 100%;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0.3px;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.25);
+  margin-bottom: 16px;
+}
+
+.generate-model-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(76, 175, 80, 0.35);
+}
+
+.generate-model-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Data Points List */
+.data-points-list {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.data-points-list p {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+}
+
+.data-points-list ul {
+  margin: 0;
+  padding-left: 20px;
+  list-style: none;
+}
+
+.data-points-list li {
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.data-points-list li:last-child {
+  border-bottom: none;
+}
+
+.data-points-list li strong {
+  color: #667eea;
+}

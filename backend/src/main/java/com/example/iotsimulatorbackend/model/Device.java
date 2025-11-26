@@ -1,5 +1,8 @@
 package com.example.iotsimulatorbackend.model;
 
+import java.util.List;
+import java.util.Map;
+
 public class Device {
     private String id;
     private String elderlyPersonId;
@@ -9,6 +12,12 @@ public class Device {
     private String deviceType;
     private String description;
     private String location;
+    private String companyId;
+    private String modelId;
+    private String companyName;
+    private String modelName;
+    private Map<String, Object> modelSpecifications;
+    private List<String> supportedDataTypes;
 
     // Constructors, getters, setters
     public Device() {}
@@ -47,4 +56,16 @@ public class Device {
     public void setDescription(String description) { this.description = description; }
     public String getLocation() { return location; }
     public void setLocation(String location) { this.location = location; }
+    public String getCompanyId() { return companyId; }
+    public void setCompanyId(String companyId) { this.companyId = companyId; }
+    public String getModelId() { return modelId; }
+    public void setModelId(String modelId) { this.modelId = modelId; }
+    public String getCompanyName() { return companyName; }
+    public void setCompanyName(String companyName) { this.companyName = companyName; }
+    public String getModelName() { return modelName; }
+    public void setModelName(String modelName) { this.modelName = modelName; }
+    public Map<String, Object> getModelSpecifications() { return modelSpecifications; }
+    public void setModelSpecifications(Map<String, Object> modelSpecifications) { this.modelSpecifications = modelSpecifications; }
+    public List<String> getSupportedDataTypes() { return supportedDataTypes; }
+    public void setSupportedDataTypes(List<String> supportedDataTypes) { this.supportedDataTypes = supportedDataTypes; }
 }
