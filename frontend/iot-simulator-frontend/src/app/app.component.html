@@ -43,7 +43,7 @@
     <div class="form-section">
       <label>👤 Select Elderly Person:</label>
       <select [(ngModel)]="selectedProfile" name="profile" (change)="onProfileChange()" [disabled]="isSimulating">
-        <option value="">-- Choose a person --</option>
+        <option [ngValue]="null">-- Choose a person --</option>
         <option *ngFor="let p of profiles" [ngValue]="p">{{p.full_name}} ({{p.email}})</option>
       </select>
     </div>
@@ -61,9 +61,8 @@
             [disabled]="isSimulating"
           />
           <label [for]="'device-' + device.id">
-            {{device.device_name | titlecase}}
-            <span *ngIf="device.description" class="device-description">({{device.description}})</span>
-            <span class="device-id">({{device.device_id}})</span>
+            {{device.deviceName | titlecase}}
+            <span class="device-id">({{device.deviceId}})</span>
           </label>
         </div>
       </div>
@@ -101,14 +100,59 @@
     <!-- Info Message: Single Device Selection Required for Individual Sensor Data -->
     <div class="form-section info-message" *ngIf="selectedProfile && devices.length > 0 && !selectedSingleDevice">
       <p>
-        <strong>💡 Tip:</strong> Select exactly <strong>one device</strong> to generate individual sensor data.
-        This allows you to test specific sensors with the "Generate" button for each data type.
+        <strong>💡 Tip:</strong> Select exactly <strong>one device</strong> to unlock additional features:
+        generate individual sensor data for each data type, and if the device has a model assigned,
+        generate model-based data using the device model's specifications.
       </p>
     </div>
 
-    <!-- Step 3: Individual Sensor Data Generation (shows when single device selected) -->
-    <div class="form-section" *ngIf="selectedSingleDevice && dataTypes.length > 0">
-      <label>🔧 Generate Individual Sensor Data:</label>
+    <!-- Model-Based Data Generation (shows when single device with model is selected) -->
+    <div class="form-section model-section" *ngIf="selectedSingleDevice && selectedSingleDevice.modelId">
+      <div class="section-header">
+        <span class="section-icon">📊</span>
+        <label>Generate Model-Based Data</label>
+      </div>
+      <div class="model-info">
+        <div class="model-badge">
+          <span class="badge company">{{selectedSingleDevice.companyName || 'N/A'}}</span>
+          <span class="badge model">{{selectedSingleDevice.modelName || 'N/A'}}</span>
+        </div>
+        <p class="help-text">
+          This will generate data based on the model's specifications.
+        </p>
+      </div>
+      <button
+        type="button"
+        (click)="generateModelBasedData()"
+        [disabled]="generatingModelData"
+        class="generate-model-btn"
+      >
+        <span *ngIf="!generatingModelData">🚀 Generate Model Data</span>
+        <span *ngIf="generatingModelData">Generating...</span>
+      </button>
+
+      <!-- Model Data Generation Result -->
+      <div class="generated-data" *ngIf="modelDataMessage">
+        <div class="message" [class.success]="lastModelDataResponse?.success" [class.error]="!lastModelDataResponse?.success">
+          {{modelDataMessage}}
+        </div>
+        <div *ngIf="lastModelDataResponse?.dataPoints?.length" class="data-points-list">
+          <p><strong>Generated Data Points:</strong></p>
+          <ul>
+            <li *ngFor="let dp of lastModelDataResponse?.dataPoints">
+              <strong>{{dp.data_type}}:</strong> {{dp.value | json}} {{dp.unit || ''}}
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Individual Sensor Data Generation (shows when single device selected) -->
+    <div class="form-section sensor-section" *ngIf="selectedSingleDevice && dataTypes.length > 0">
+      <div class="section-header">
+        <span class="section-icon">🔧</span>
+        <label>Generate Individual Sensor Data</label>
+      </div>
       <div class="sensors-grid">
         <div *ngFor="let dataType of dataTypes" class="sensor-card">
           <div class="sensor-header">

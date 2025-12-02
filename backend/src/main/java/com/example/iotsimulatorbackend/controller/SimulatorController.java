@@ -7,6 +7,8 @@ import com.example.iotsimulatorbackend.model.SimulationResponse;
 import com.example.iotsimulatorbackend.model.SimulationStatistics;
 import com.example.iotsimulatorbackend.model.GeofencePlace;
 import com.example.iotsimulatorbackend.model.SensorGenerateRequest;
+import com.example.iotsimulatorbackend.model.DeviceCompany;
+import com.example.iotsimulatorbackend.model.DeviceModel;
 import com.example.iotsimulatorbackend.service.SimulatorService;
 import com.example.iotsimulatorbackend.service.SimulationManager;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -114,8 +116,39 @@ public class SimulatorController {
         }
     }
 
+    @PostMapping("/sensor/generate-model-data/{deviceId}")
+    public ResponseEntity<?> generateModelBasedData(@PathVariable String deviceId) {
+        try {
+            Map<String, Object> result = simulationManager.generateAndSendModelBasedData(deviceId);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                Map.of("error", e.getMessage())
+            );
+        }
+    }
+
     @GetMapping("/geofence-places/{elderlyPersonId}")
     public ResponseEntity<List<GeofencePlace>> getGeofencePlaces(@PathVariable String elderlyPersonId) {
         return ResponseEntity.ok(service.getGeofencePlacesByElderlyPersonId(elderlyPersonId));
+    }
+
+    @GetMapping("/companies")
+    public ResponseEntity<List<DeviceCompany>> getAllCompanies() {
+        return ResponseEntity.ok(service.getAllCompanies());
+    }
+
+    @GetMapping("/models/{companyId}")
+    public ResponseEntity<List<DeviceModel>> getModelsByCompanyId(@PathVariable String companyId) {
+        return ResponseEntity.ok(service.getModelsByCompanyId(companyId));
+    }
+
+    @GetMapping("/model/{modelId}")
+    public ResponseEntity<DeviceModel> getModelById(@PathVariable String modelId) {
+        DeviceModel model = service.getModelById(modelId);
+        if (model == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(model);
     }
 }

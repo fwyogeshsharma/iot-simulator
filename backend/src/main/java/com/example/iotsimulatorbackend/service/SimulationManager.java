@@ -161,15 +161,172 @@ public class SimulationManager {
      */
 
     /**
+     * Generate and send model-based data for a device
+     * This method uses the model specifications to generate data for each field
+     */
+    public Map<String, Object> generateAndSendModelBasedData(String deviceId) throws Exception {
+        long startTime = System.currentTimeMillis();
+
+        logger.info("═══════════════════════════════════════════════════════════════════");
+        logger.info("📊 MODEL-BASED DATA GENERATION");
+        logger.info("═══════════════════════════════════════════════════════════════════");
+
+        // Get the device information
+        com.example.iotsimulatorbackend.model.Device targetDevice = getDeviceById(deviceId);
+
+        if (targetDevice == null) {
+            logger.error("❌ FAILED: Device not found with ID: {}", deviceId);
+            throw new Exception("Device not found with ID: " + deviceId);
+        }
+
+        logger.info("📱 Device: {} ({})", targetDevice.getDeviceName(), targetDevice.getDeviceId());
+
+        // Check if device has model specifications
+        Map<String, Object> specs = targetDevice.getModelSpecifications();
+        if (specs == null || specs.isEmpty()) {
+            logger.warn("⚠️  No model specifications found for device: {}", deviceId);
+            throw new Exception("No model specifications available for this device");
+        }
+
+        logger.info("📋 Model: {} ({})", targetDevice.getModelName(), targetDevice.getCompanyName());
+        logger.info("   Specifications contain {} fields", specs.size());
+
+        // Generate data points from specifications
+        List<Map<String, Object>> dataPoints = generateModelBasedData(specs);
+
+        // If no simulatable data from specs, fall back to supported_data_types + device_type_data_configs
+        if (dataPoints.isEmpty()) {
+            logger.info("   No numeric fields in specifications, using supported_data_types fallback");
+            List<String> supportedDataTypes = targetDevice.getSupportedDataTypes();
+
+            if (supportedDataTypes != null && !supportedDataTypes.isEmpty()) {
+                logger.info("   Supported data types: {}", supportedDataTypes);
+
+                // Get the device's data type configs
+                List<DataTypeConfig> configs = simulatorService.getDataTypesByDeviceId(deviceId);
+
+                for (String dataType : supportedDataTypes) {
+                    // Find matching config for this data type
+                    DataTypeConfig matchingConfig = null;
+                    for (DataTypeConfig config : configs) {
+                        if (config.getDataType().equals(dataType)) {
+                            matchingConfig = config;
+                            break;
+                        }
+                    }
+
+                    if (matchingConfig != null) {
+                        Map<String, Object> dataPoint = new LinkedHashMap<>();
+                        dataPoint.put("data_type", dataType);
+                        dataPoint.put("value", generateValue(matchingConfig));
+                        if (matchingConfig.getUnit() != null && !matchingConfig.getUnit().isEmpty()) {
+                            dataPoint.put("unit", matchingConfig.getUnit());
+                        }
+                        dataPoints.add(dataPoint);
+                        logger.info("   Generated {} from data type config", dataType);
+                    } else {
+                        logger.warn("   No config found for data type: {}", dataType);
+                    }
+                }
+            }
+        }
+
+        if (dataPoints.isEmpty()) {
+            logger.warn("⚠️  No simulatable data fields found in specifications or supported_data_types");
+            throw new Exception("No simulatable data fields in model specifications. Ensure the model has numeric specification values or supported_data_types with matching device_type_data_configs.");
+        }
+
+        int successCount = 0;
+        int failCount = 0;
+        List<Map<String, Object>> sentDataPoints = new ArrayList<>();
+
+        // Send each data point
+        for (Map<String, Object> dataPoint : dataPoints) {
+            try {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("device_id", targetDevice.getDeviceId());
+                payload.put("data_type", dataPoint.get("data_type"));
+                payload.put("value", dataPoint.get("value"));
+
+                if (dataPoint.containsKey("unit")) {
+                    payload.put("unit", dataPoint.get("unit"));
+                }
+
+                // Include location if available
+                if (targetDevice.getLocation() != null && !targetDevice.getLocation().trim().isEmpty()) {
+                    payload.put("location", targetDevice.getLocation());
+                }
+
+                // Send to device-ingest endpoint
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("Authorization", "Bearer " + targetDevice.getApiKey());
+                headers.set("Content-Type", "application/json");
+
+                String payloadJson = objectMapper.writeValueAsString(payload);
+                HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+
+                ResponseEntity<String> response = restTemplate.postForEntity(deviceIngestUrl, request, String.class);
+
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    successCount++;
+                    sentDataPoints.add(dataPoint);
+                    logger.debug("   ✓ {} = {}", dataPoint.get("data_type"), dataPoint.get("value"));
+                } else {
+                    failCount++;
+                    logger.warn("   ✗ {} - Status: {}", dataPoint.get("data_type"), response.getStatusCode());
+                }
+            } catch (Exception e) {
+                failCount++;
+                logger.warn("   ✗ {} - Error: {}", dataPoint.get("data_type"), e.getMessage());
+            }
+        }
+
+        long totalTime = System.currentTimeMillis() - startTime;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", failCount == 0);
+        result.put("message", String.format("Generated %d data points (%d successful, %d failed)", dataPoints.size(), successCount, failCount));
+        result.put("deviceId", targetDevice.getDeviceId());
+        result.put("modelName", targetDevice.getModelName());
+        result.put("companyName", targetDevice.getCompanyName());
+        result.put("totalDataPoints", dataPoints.size());
+        result.put("successCount", successCount);
+        result.put("failCount", failCount);
+        result.put("dataPoints", sentDataPoints);
+        result.put("elapsedMs", totalTime);
+
+        if (failCount == 0) {
+            logger.info("✅ SUCCESS - {} data points sent ({}ms)", successCount, totalTime);
+        } else {
+            logger.warn("⚠️  PARTIAL - {}/{} data points sent ({}ms)", successCount, dataPoints.size(), totalTime);
+        }
+        logger.info("═══════════════════════════════════════════════════════════════════");
+
+        return result;
+    }
+
+    /**
      * Generate and send data for a single sensor/device
      */
 
     public Map<String, Object> generateAndSendSensorData(String deviceId, String dataType, String location) throws Exception {
+        long startTime = System.currentTimeMillis();
+
+        logger.info("═══════════════════════════════════════════════════════════════════");
+        logger.info("📊 INDIVIDUAL SENSOR DATA GENERATION");
+        logger.info("═══════════════════════════════════════════════════════════════════");
+
         // Step 1: Get the device information directly from Supabase by device ID
         com.example.iotsimulatorbackend.model.Device targetDevice = getDeviceById(deviceId);
 
         if (targetDevice == null) {
+            logger.error("❌ FAILED: Device not found with ID: {}", deviceId);
             throw new Exception("Device not found with ID: " + deviceId);
+        }
+
+        logger.info("📱 Device: {} ({})", targetDevice.getDeviceName(), targetDevice.getDeviceId());
+        if (location != null && !location.trim().isEmpty()) {
+            logger.info("📍 Location: {}", location);
         }
 
         // Step 2: Get the data type configuration
@@ -184,8 +341,11 @@ public class SimulationManager {
         }
 
         if (targetConfig == null) {
+            logger.error("❌ FAILED: Sensor '{}' not found for this device", dataType);
             throw new Exception("Data type not found: " + dataType + " for device: " + deviceId);
         }
+
+        logger.info("🔧 Sensor: {} ({})", targetConfig.getDisplayName(), dataType);
 
         String unit = targetConfig.getUnit();
         if (unit != null && unit.trim().isEmpty()) {
@@ -200,8 +360,7 @@ public class SimulationManager {
             if (geofences != null && !geofences.isEmpty()) {
                 // Pick a random geofence
                 GeofencePlace selectedGeofence = geofences.get(new Random().nextInt(geofences.size()));
-                logger.info("🎯 Generating GPS data for random geofence '{}' for elderly person: {}",
-                    selectedGeofence.getName(), targetDevice.getElderlyPersonId());
+                logger.info("   → Generating GPS within geofence: {}", selectedGeofence.getName());
 
                 // Generate GPS coordinates within the selected geofence
                 Map<String, Double> gpsCoords = generateGpsWithinGeofence(selectedGeofence);
@@ -226,15 +385,12 @@ public class SimulationManager {
                 headers.set("Content-Type", "application/json");
 
                 String payloadJson = objectMapper.writeValueAsString(payload);
-                if (location != null && !location.trim().isEmpty()) {
-                    logger.debug("📤 Sending GPS for geofence '{}' at location '{}': {}", selectedGeofence.getName(), location, payloadJson);
-                } else {
-                    logger.debug("📤 Sending GPS for geofence '{}': {}", selectedGeofence.getName(), payloadJson);
-                }
 
                 HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+                long sendTime = System.currentTimeMillis();
                 ResponseEntity<String> response = restTemplate.postForEntity(
                     deviceIngestUrl, request, String.class);
+                long responseTime = System.currentTimeMillis() - sendTime;
 
                 Map<String, Object> result = new LinkedHashMap<>();
                 if (response.getStatusCode().is2xxSuccessful()) {
@@ -254,14 +410,20 @@ public class SimulationManager {
                     result.put("displayName", targetConfig.getDisplayName());
                     result.put("generatedLocations", generatedLocations);
 
-                    logger.info("✓ Generated and sent GPS data for geofence '{}' at ({}, {})",
-                        selectedGeofence.getName(), gpsCoords.get("latitude"), gpsCoords.get("longitude"));
+                    long totalTime = System.currentTimeMillis() - startTime;
+                    logger.info("   → Value: Lat {}, Lon {}",
+                        String.format("%.6f", gpsCoords.get("latitude")),
+                        String.format("%.6f", gpsCoords.get("longitude")));
+                    logger.info("✅ SUCCESS ({}ms total, {}ms send)", totalTime, responseTime);
+                    logger.info("═══════════════════════════════════════════════════════════════════");
                 } else {
                     result.put("success", false);
                     result.put("message", "Failed to send GPS data - Status: " + response.getStatusCode());
                     result.put("error", response.getBody());
-                    logger.warn("✗ Failed to send GPS data for geofence '{}': {}",
-                        selectedGeofence.getName(), response.getStatusCode());
+                    long totalTime = System.currentTimeMillis() - startTime;
+                    logger.error("❌ FAILED: Device-ingest returned {} ({}ms)", response.getStatusCode(), totalTime);
+                    logger.error("   Response: {}", response.getBody());
+                    logger.info("═══════════════════════════════════════════════════════════════════");
                 }
 
                 return result;
@@ -270,6 +432,15 @@ public class SimulationManager {
 
         // Step 4: For non-location data, generate single value as before
         Object generatedValue = generateValue(targetConfig);
+
+        // Format the value for display
+        String valueDisplay;
+        if (generatedValue instanceof Map) {
+            valueDisplay = generatedValue.toString();
+        } else {
+            valueDisplay = generatedValue + (unit != null ? " " + unit : "");
+        }
+        logger.info("   → Value: {}", valueDisplay);
 
         // Step 5: Create payload
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -292,38 +463,45 @@ public class SimulationManager {
         headers.set("Content-Type", "application/json");
 
         String payloadJson = objectMapper.writeValueAsString(payload);
-        if (location != null && !location.trim().isEmpty()) {
-            logger.debug("📤 Sending individual sensor payload for location '{}' to device-ingest: {}", location, payloadJson);
-        } else {
-            logger.debug("📤 Sending individual sensor payload to device-ingest: {}", payloadJson);
-        }
 
         HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
-        ResponseEntity<String> response = restTemplate.postForEntity(
-            deviceIngestUrl, request, String.class);
 
         Map<String, Object> result = new LinkedHashMap<>();
-        if (response.getStatusCode().is2xxSuccessful()) {
-            result.put("success", true);
-            result.put("message", "Data generated and sent successfully");
-            result.put("deviceId", targetDevice.getDeviceId());
-            result.put("dataType", targetConfig.getDataType());
-            result.put("displayName", targetConfig.getDisplayName());
-            result.put("value", generatedValue);
-            result.put("unit", unit);
-            if (location != null && !location.trim().isEmpty()) {
-                logger.info("✓ Generated and sent {} [{}] = {} {} at location '{}'",
-                        targetConfig.getDisplayName(), targetConfig.getDataType(),
-                        generatedValue, unit != null ? unit : "", location);
+        try {
+            long sendTime = System.currentTimeMillis();
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                deviceIngestUrl, request, String.class);
+            long responseTime = System.currentTimeMillis() - sendTime;
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                result.put("success", true);
+                result.put("message", "Data generated and sent successfully");
+                result.put("deviceId", targetDevice.getDeviceId());
+                result.put("dataType", targetConfig.getDataType());
+                result.put("displayName", targetConfig.getDisplayName());
+                result.put("value", generatedValue);
+                result.put("unit", unit);
+
+                long totalTime = System.currentTimeMillis() - startTime;
+                logger.info("✅ SUCCESS ({}ms total, {}ms send)", totalTime, responseTime);
+                logger.info("═══════════════════════════════════════════════════════════════════");
             } else {
-                logger.info("✓ Generated and sent {} [{}] = {} {}",
-                        targetConfig.getDisplayName(), targetConfig.getDataType(),
-                        generatedValue, unit != null ? unit : "");
+                long totalTime = System.currentTimeMillis() - startTime;
+                logger.error("❌ FAILED: Device-ingest returned {} ({}ms)", response.getStatusCode(), totalTime);
+                logger.error("   Response: {}", response.getBody());
+                logger.info("═══════════════════════════════════════════════════════════════════");
+                result.put("success", false);
+                result.put("message", "Failed to send data - Status: " + response.getStatusCode());
+                result.put("error", response.getBody());
             }
-        } else {
+        } catch (Exception e) {
+            long totalTime = System.currentTimeMillis() - startTime;
+            logger.error("❌ FAILED: {} ({}ms)", e.getMessage(), totalTime);
+            logger.error("   Payload: {}", payloadJson);
+            logger.info("═══════════════════════════════════════════════════════════════════");
             result.put("success", false);
-            result.put("message", "Failed to send data - Status: " + response.getStatusCode());
-            result.put("error", response.getBody());
+            result.put("message", "Error sending data to device-ingest");
+            result.put("error", e.getMessage());
         }
 
         return result;
@@ -364,6 +542,32 @@ public class SimulationManager {
                 device.setLocation(deviceNode.get("location").asText());
             }
 
+            // Set company_id and fetch company name if available
+            if (deviceNode.has("company_id") && !deviceNode.get("company_id").isNull()) {
+                String companyId = deviceNode.get("company_id").asText();
+                device.setCompanyId(companyId);
+
+                // Fetch company to get name
+                com.example.iotsimulatorbackend.model.DeviceCompany company = simulatorService.getCompanyById(companyId);
+                if (company != null) {
+                    device.setCompanyName(company.getName());
+                }
+            }
+
+            // Set model_id and fetch model specifications if available
+            if (deviceNode.has("model_id") && !deviceNode.get("model_id").isNull()) {
+                String modelId = deviceNode.get("model_id").asText();
+                device.setModelId(modelId);
+
+                // Fetch model to get specifications
+                com.example.iotsimulatorbackend.model.DeviceModel model = simulatorService.getModelById(modelId);
+                if (model != null) {
+                    device.setModelName(model.getName());
+                    device.setModelSpecifications(model.getSpecifications());
+                    device.setSupportedDataTypes(model.getSupportedDataTypes());
+                }
+            }
+
             return device;
         } catch (Exception e) {
             logger.error("Error fetching device by ID: {}", e.getMessage());
@@ -399,12 +603,105 @@ public class SimulationManager {
     }
 
     /**
+     * Generate data based on model specifications
+     * Each field in the specifications becomes a separate data point
+     */
+    public List<Map<String, Object>> generateModelBasedData(Map<String, Object> specifications) {
+        List<Map<String, Object>> dataPoints = new ArrayList<>();
+
+        if (specifications == null || specifications.isEmpty()) {
+            return dataPoints;
+        }
+
+        Random random = new Random();
+
+        for (Map.Entry<String, Object> entry : specifications.entrySet()) {
+            String fieldName = entry.getKey();
+            Object baseValue = entry.getValue();
+
+            // Skip non-numeric or static fields
+            if (baseValue == null) continue;
+
+            // Handle different field types
+            Map<String, Object> dataPoint = new LinkedHashMap<>();
+            dataPoint.put("data_type", fieldName);
+
+            if (baseValue instanceof Number) {
+                double base = ((Number) baseValue).doubleValue();
+
+                // Generate value with some variation (±20%)
+                double variation = base * 0.2;
+                double newValue;
+
+                // Handle special fields with specific value formats
+                if (fieldName.equals("humidity") || fieldName.contains("humidity")) {
+                    // Humidity: 0-100%
+                    newValue = Math.max(0, Math.min(100, base + (random.nextDouble() * variation * 2 - variation)));
+                    Map<String, Object> valueMap = new LinkedHashMap<>();
+                    valueMap.put("percentage", Math.round(newValue * 10.0) / 10.0);
+                    dataPoint.put("value", valueMap);
+                } else if (fieldName.equals("temperature") || fieldName.contains("temperature")) {
+                    // Temperature in Fahrenheit (convert from Celsius base value in specs)
+                    // Specs typically have Celsius values (e.g., 22.5°C), convert to Fahrenheit
+                    double tempCelsius = base + (random.nextDouble() * variation * 2 - variation);
+                    double tempFahrenheit = (tempCelsius * 9.0 / 5.0) + 32.0;
+                    dataPoint.put("value", Math.round(tempFahrenheit * 10.0) / 10.0);
+                    dataPoint.put("unit", "°F");
+                } else if (fieldName.equals("pressure") || fieldName.contains("pressure")) {
+                    // Skip atmospheric pressure for environmental sensors - not in allowed data types
+                    // Only bed pad sensors support "pressure" data type
+                    continue;
+                } else if (fieldName.startsWith("pm") || fieldName.contains("pm1") || fieldName.contains("pm2") || fieldName.contains("pm10")) {
+                    // PM values - convert to AQI (Air Quality Index)
+                    // Only process pm2_5 or pm10 as the main indicator, skip others to avoid duplicates
+                    if (fieldName.equals("pm2_5") || fieldName.equals("pm2_5_atm") || fieldName.equals("pm2_5_cf_1")) {
+                        // Skip pm2_5 variants - we'll use pm10_0 for AQI calculation
+                        continue;
+                    } else if (fieldName.equals("pm10_0") || fieldName.equals("pm10")) {
+                        // Convert PM10 to AQI (simplified calculation)
+                        // AQI ranges: 0-50 Good, 51-100 Moderate, 101-150 Unhealthy for Sensitive, etc.
+                        double pm10Value = Math.max(0, base + (random.nextDouble() * variation * 2 - variation));
+                        int aqiValue = (int) Math.min(500, pm10Value * 2.5); // Simplified PM10 to AQI
+                        dataPoint.put("data_type", "aqi");
+                        Map<String, Object> valueMap = new LinkedHashMap<>();
+                        valueMap.put("aqi", aqiValue);
+                        dataPoint.put("value", valueMap);
+                        dataPoint.put("unit", "AQI");
+                    } else if (fieldName.equals("pm1_0") || fieldName.equals("pm1")) {
+                        // Skip pm1 - not commonly used for AQI
+                        continue;
+                    } else {
+                        // Skip other PM variants
+                        continue;
+                    }
+                } else if (fieldName.equals("latitude") || fieldName.equals("longitude")) {
+                    // GPS coordinates - skip individual fields, handled separately
+                    continue;
+                } else if (fieldName.equals("uptime") || fieldName.equals("last_seen") || fieldName.equals("member_since") || fieldName.equals("sensor_index")) {
+                    // Static/non-simulated fields - skip
+                    continue;
+                } else {
+                    // Generic numeric field
+                    newValue = base + (random.nextDouble() * variation * 2 - variation);
+                    Map<String, Object> valueMap = new LinkedHashMap<>();
+                    valueMap.put(fieldName, Math.round(newValue * 10.0) / 10.0);
+                    dataPoint.put("value", valueMap);
+                }
+
+                dataPoints.add(dataPoint);
+            } else if (baseValue instanceof String) {
+                // String values - skip static strings like "name"
+                continue;
+            }
+        }
+
+        return dataPoints;
+    }
+
+    /**
      * Generate a value based on data type configuration
      */
     private Object generateValue(DataTypeConfig config) {
-        logger.debug("🔧 Generating value for data type: {}, configType: {}, config: {}",
-            config.getDataType(), config.getConfigType(), config.getConfig());
-
         if ("enum".equals(config.getConfigType())) {
             List<?> values = (List<?>) config.getConfig().get("values");
             if (values != null && !values.isEmpty()) {
@@ -462,8 +759,6 @@ public class SimulationManager {
                 double max = ((Number) conf.getOrDefault("max", 100)).doubleValue();
                 int precision = ((Number) conf.getOrDefault("precision", 0)).intValue();
 
-                logger.debug("📊 Generating random number - min: {}, max: {}, precision: {}", min, max, precision);
-
                 double value = min + (Math.random() * (max - min));
 
                 if (precision > 0) {
@@ -473,7 +768,6 @@ public class SimulationManager {
                     value = Math.round(value);
                 }
 
-                logger.debug("✓ Generated value: {}", value);
                 return value;
             }
         }
@@ -532,19 +826,11 @@ public class SimulationManager {
             isRunning = true;
 
             // Fetch geofence places for location-based simulation
-            logger.info("📍 Attempting to load geofence places for elderly person: {}", elderlyPersonId);
             geofencePlaces = simulatorService.getGeofencePlacesByElderlyPersonId(elderlyPersonId);
-            logger.info("📍 Geofence places loaded: {} places", geofencePlaces.size());
             if (!geofencePlaces.isEmpty()) {
-                logger.info("📍 Loaded {} geofence places for location-based simulation", geofencePlaces.size());
-                for (GeofencePlace place : geofencePlaces) {
-                    logger.info("   ├─ {} ({}) - Lat: {}, Lon: {}, Radius: {}m",
-                            place.getName(), place.getPlaceType(),
-                            place.getLatitude(), place.getLongitude(), place.getRadiusMeters());
-                }
+                logger.info("📍 Loaded {} geofence places for GPS simulation", geofencePlaces.size());
             } else {
-                logger.warn("⚠️  NO GEOFENCE PLACES FOUND! Location simulation will use random values.");
-                logger.warn("    Please ensure geofence places are created for elderly person ID: {}", elderlyPersonId);
+                logger.warn("⚠️  No geofence places found - GPS will use random values");
             }
 
             // For each device, get its data type configs and start scheduling
@@ -559,18 +845,13 @@ public class SimulationManager {
                     }
 
                     // For each data type config, schedule generation
+                    logger.info("   └─ {} has {} sensors", device.getDeviceName(), configs.size());
                     for (DataTypeConfig config : configs) {
-                        logger.debug("   Data type: {} - ConfigType: {}", config.getDataType(), config.getConfigType());
-
                         // Initialize LocationGenerator for GPS/location devices
                         if (("gps".equals(config.getDataType()) || "location".equals(config.getDataType()))) {
                             String generatorKey = device.getId() + "_" + config.getDataType();
                             if (!geofencePlaces.isEmpty()) {
                                 locationGenerators.put(generatorKey, new LocationGenerator(geofencePlaces));
-                                logger.info("✅ Initialized LocationGenerator for device {} ({}) - will use {} geofence places",
-                                        device.getDeviceName(), device.getDeviceId(), geofencePlaces.size());
-                            } else {
-                                logger.warn("⚠️  Not initializing LocationGenerator - no geofence places loaded");
                             }
                         }
 
@@ -602,20 +883,6 @@ public class SimulationManager {
                 intervalDisplay = (intervalSeconds / 3600) + "h";
             }
 
-            // Calculate next execution times for logging
-            long nowMillis = System.currentTimeMillis();
-            long nextExecutionMillis = nowMillis; // First execution is immediate (initialDelay=0)
-            long subsequentExecutionMillis = nowMillis + (intervalSeconds * 1000);
-
-            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("HH:mm:ss");
-            String nextExecutionTime = sdf.format(new java.util.Date(nextExecutionMillis));
-            String subsequentExecutionTime = sdf.format(new java.util.Date(subsequentExecutionMillis));
-
-            logger.info("⏱️  Scheduling {} for device {} ({}) - Frequency: {}/day",
-                    config.getDisplayName(), device.getDeviceName(), device.getDeviceId(),
-                    frequencyPerDay);
-            logger.info("    Interval: {} | First execution: {} (now) | Next: {} | Then every {}",
-                    intervalDisplay, nextExecutionTime, subsequentExecutionTime, intervalDisplay);
 
             // Create a task key for tracking
             String taskKey = device.getId() + "_" + config.getDataType();

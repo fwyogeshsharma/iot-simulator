@@ -3,6 +3,8 @@ package com.example.iotsimulatorbackend.service;
 import com.example.iotsimulatorbackend.model.Device;
 import com.example.iotsimulatorbackend.model.DataTypeConfig;
 import com.example.iotsimulatorbackend.model.GeofencePlace;
+import com.example.iotsimulatorbackend.model.DeviceCompany;
+import com.example.iotsimulatorbackend.model.DeviceModel;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +41,12 @@ public class SimulatorService {
 
     @Value("${supabase.geofence-places-url:https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/geofence_places}")
     private String geofencePlacesUrl;
+
+    @Value("${supabase.device-companies-url:https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_companies}")
+    private String deviceCompaniesUrl;
+
+    @Value("${supabase.device-models-url:https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_models}")
+    private String deviceModelsUrl;
 
     @Value("${supabase.apikey}")
     private String supabaseApiKey;
@@ -99,6 +107,37 @@ public class SimulatorService {
                 deviceTypeDescriptions.put(code, description);
             }
 
+            // Fetch company and model data for enrichment
+            Map<String, String> companyNames = new HashMap<>();
+            Map<String, String> modelNames = new HashMap<>();
+            Map<String, Map<String, Object>> modelSpecifications = new HashMap<>();
+
+            try {
+                // Fetch all companies
+                String allCompaniesUrl = deviceCompaniesUrl + "?select=id,name&is_active=eq.true";
+                ResponseEntity<String> companiesResponse = restTemplate.exchange(allCompaniesUrl, HttpMethod.GET, entity, String.class);
+                JsonNode companiesArray = objectMapper.readTree(companiesResponse.getBody());
+                for (JsonNode companyNode : companiesArray) {
+                    companyNames.put(companyNode.get("id").asText(), companyNode.get("name").asText());
+                }
+
+                // Fetch all models
+                String allModelsUrl = deviceModelsUrl + "?select=id,name,specifications&is_active=eq.true";
+                ResponseEntity<String> modelsResponse = restTemplate.exchange(allModelsUrl, HttpMethod.GET, entity, String.class);
+                JsonNode modelsArray = objectMapper.readTree(modelsResponse.getBody());
+                for (JsonNode modelNode : modelsArray) {
+                    String modelId = modelNode.get("id").asText();
+                    modelNames.put(modelId, modelNode.get("name").asText());
+                    if (modelNode.has("specifications") && !modelNode.get("specifications").isNull()) {
+                        JsonNode specsNode = modelNode.get("specifications");
+                        Map<String, Object> specs = objectMapper.convertValue(specsNode, Map.class);
+                        modelSpecifications.put(modelId, specs);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Warning: Could not fetch company/model data: " + e.getMessage());
+            }
+
             List<Device> devices = new ArrayList<>();
             for (JsonNode deviceNode : jsonArray) {
                 String deviceTypeCode = deviceNode.has("device_type") && !deviceNode.get("device_type").isNull()
@@ -119,6 +158,20 @@ public class SimulatorService {
                 // Set location if available
                 if (deviceNode.has("location") && !deviceNode.get("location").isNull()) {
                     device.setLocation(deviceNode.get("location").asText());
+                }
+
+                // Set company_id and model_id if available
+                if (deviceNode.has("company_id") && !deviceNode.get("company_id").isNull()) {
+                    String companyId = deviceNode.get("company_id").asText();
+                    device.setCompanyId(companyId);
+                    device.setCompanyName(companyNames.getOrDefault(companyId, ""));
+                }
+
+                if (deviceNode.has("model_id") && !deviceNode.get("model_id").isNull()) {
+                    String modelId = deviceNode.get("model_id").asText();
+                    device.setModelId(modelId);
+                    device.setModelName(modelNames.getOrDefault(modelId, ""));
+                    device.setModelSpecifications(modelSpecifications.getOrDefault(modelId, null));
                 }
 
                 devices.add(device);
@@ -204,7 +257,6 @@ public class SimulatorService {
                         // It's already a JSON object
                         parsedSample = sampleConfig;
                     }
-                    System.out.println("📝 Parsing sample_data_config for " + dataType + ": " + parsedSample);
 
                     // Determine if it's range or enum based on sample_data_config content
                     if (parsedSample.has("type")) {
@@ -222,7 +274,6 @@ public class SimulatorService {
                             if (parsedSample.has("min")) config.put("min", parsedSample.get("min").asDouble());
                             if (parsedSample.has("max")) config.put("max", parsedSample.get("max").asDouble());
                             if (parsedSample.has("precision")) config.put("precision", parsedSample.get("precision").asInt());
-                            System.out.println("📊 Parsed random_number config for " + dataType + ": " + config);
                         } else if ("blood_pressure".equals(type)) {
                             configType = "range";
                             if (parsedSample.has("systolic")) {
@@ -333,6 +384,181 @@ public class SimulatorService {
             System.err.println("Error fetching geofence places from Supabase: " + e.getMessage());
             e.printStackTrace();
             return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Fetch all active device companies
+     */
+    public List<DeviceCompany> getAllCompanies() {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("apikey", supabaseApiKey);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String companiesQueryUrl = deviceCompaniesUrl + "?is_active=eq.true&order=name";
+            System.out.println("Fetching companies from: " + companiesQueryUrl);
+
+            ResponseEntity<String> response = restTemplate.exchange(companiesQueryUrl, HttpMethod.GET, entity, String.class);
+            JsonNode jsonArray = objectMapper.readTree(response.getBody());
+
+            List<DeviceCompany> companies = new ArrayList<>();
+            for (JsonNode companyNode : jsonArray) {
+                DeviceCompany company = new DeviceCompany(
+                    companyNode.get("id").asText(),
+                    companyNode.has("code") && !companyNode.get("code").isNull() ? companyNode.get("code").asText() : "",
+                    companyNode.get("name").asText(),
+                    companyNode.has("description") && !companyNode.get("description").isNull() ? companyNode.get("description").asText() : ""
+                );
+                if (companyNode.has("logo_url") && !companyNode.get("logo_url").isNull()) {
+                    company.setLogoUrl(companyNode.get("logo_url").asText());
+                }
+                if (companyNode.has("website") && !companyNode.get("website").isNull()) {
+                    company.setWebsite(companyNode.get("website").asText());
+                }
+                companies.add(company);
+            }
+
+            System.out.println("✓ Found " + companies.size() + " companies");
+            return companies;
+        } catch (Exception e) {
+            System.err.println("Error fetching companies from Supabase: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Fetch device models by company ID
+     */
+    public List<DeviceModel> getModelsByCompanyId(String companyId) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("apikey", supabaseApiKey);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String modelsQueryUrl = deviceModelsUrl + "?company_id=eq." + companyId + "&is_active=eq.true&order=name";
+            System.out.println("Fetching models for company " + companyId + " from: " + modelsQueryUrl);
+
+            ResponseEntity<String> response = restTemplate.exchange(modelsQueryUrl, HttpMethod.GET, entity, String.class);
+            JsonNode jsonArray = objectMapper.readTree(response.getBody());
+
+            List<DeviceModel> models = new ArrayList<>();
+            for (JsonNode modelNode : jsonArray) {
+                DeviceModel model = new DeviceModel(
+                    modelNode.get("id").asText(),
+                    modelNode.has("company_id") && !modelNode.get("company_id").isNull() ? modelNode.get("company_id").asText() : "",
+                    modelNode.has("code") && !modelNode.get("code").isNull() ? modelNode.get("code").asText() : "",
+                    modelNode.get("name").asText(),
+                    modelNode.has("model_number") && !modelNode.get("model_number").isNull() ? modelNode.get("model_number").asText() : ""
+                );
+
+                if (modelNode.has("device_type_id") && !modelNode.get("device_type_id").isNull()) {
+                    model.setDeviceTypeId(modelNode.get("device_type_id").asText());
+                }
+                if (modelNode.has("manufacturer") && !modelNode.get("manufacturer").isNull()) {
+                    model.setManufacturer(modelNode.get("manufacturer").asText());
+                }
+                if (modelNode.has("description") && !modelNode.get("description").isNull()) {
+                    model.setDescription(modelNode.get("description").asText());
+                }
+                if (modelNode.has("image_url") && !modelNode.get("image_url").isNull()) {
+                    model.setImageUrl(modelNode.get("image_url").asText());
+                }
+                if (modelNode.has("specifications") && !modelNode.get("specifications").isNull()) {
+                    JsonNode specsNode = modelNode.get("specifications");
+                    Map<String, Object> specs = objectMapper.convertValue(specsNode, Map.class);
+                    model.setSpecifications(specs);
+                }
+
+                models.add(model);
+            }
+
+            System.out.println("✓ Found " + models.size() + " models for company: " + companyId);
+            return models;
+        } catch (Exception e) {
+            System.err.println("Error fetching models from Supabase: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Get a device model by its ID
+     */
+    public DeviceModel getModelById(String modelId) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("apikey", supabaseApiKey);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String modelQueryUrl = deviceModelsUrl + "?id=eq." + modelId;
+            ResponseEntity<String> response = restTemplate.exchange(modelQueryUrl, HttpMethod.GET, entity, String.class);
+            JsonNode jsonArray = objectMapper.readTree(response.getBody());
+
+            if (jsonArray.size() == 0) {
+                return null;
+            }
+
+            JsonNode modelNode = jsonArray.get(0);
+            DeviceModel model = new DeviceModel(
+                modelNode.get("id").asText(),
+                modelNode.has("company_id") && !modelNode.get("company_id").isNull() ? modelNode.get("company_id").asText() : "",
+                modelNode.has("code") && !modelNode.get("code").isNull() ? modelNode.get("code").asText() : "",
+                modelNode.get("name").asText(),
+                modelNode.has("model_number") && !modelNode.get("model_number").isNull() ? modelNode.get("model_number").asText() : ""
+            );
+
+            if (modelNode.has("specifications") && !modelNode.get("specifications").isNull()) {
+                JsonNode specsNode = modelNode.get("specifications");
+                Map<String, Object> specs = objectMapper.convertValue(specsNode, Map.class);
+                model.setSpecifications(specs);
+            }
+
+            // Parse supported_data_types array
+            if (modelNode.has("supported_data_types") && !modelNode.get("supported_data_types").isNull()) {
+                JsonNode dataTypesNode = modelNode.get("supported_data_types");
+                List<String> supportedDataTypes = objectMapper.convertValue(dataTypesNode,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
+                model.setSupportedDataTypes(supportedDataTypes);
+            }
+
+            return model;
+        } catch (Exception e) {
+            System.err.println("Error fetching model by ID: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get a device company by its ID
+     */
+    public DeviceCompany getCompanyById(String companyId) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("apikey", supabaseApiKey);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String companyQueryUrl = deviceCompaniesUrl + "?id=eq." + companyId;
+            ResponseEntity<String> response = restTemplate.exchange(companyQueryUrl, HttpMethod.GET, entity, String.class);
+            JsonNode jsonArray = objectMapper.readTree(response.getBody());
+
+            if (jsonArray.size() == 0) {
+                return null;
+            }
+
+            JsonNode companyNode = jsonArray.get(0);
+            DeviceCompany company = new DeviceCompany(
+                companyNode.get("id").asText(),
+                companyNode.has("code") && !companyNode.get("code").isNull() ? companyNode.get("code").asText() : "",
+                companyNode.get("name").asText(),
+                companyNode.has("description") && !companyNode.get("description").isNull() ? companyNode.get("description").asText() : ""
+            );
+
+            return company;
+        } catch (Exception e) {
+            System.err.println("Error fetching company by ID: " + e.getMessage());
+            return null;
         }
     }
 }
