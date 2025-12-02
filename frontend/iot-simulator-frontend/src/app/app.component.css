@@ -35,7 +35,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .warning-text { color: #d32f2f; font-weight: 600; }
 .device-selection-controls { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
 .selection-buttons { display: flex; gap: 8px; }
-.selection-btn { padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 6px; border: 1px solid #667eea; background: white; color: #667eea; cursor: pointer; transition: all 0.2s ease; text-transform: none; }
+.selection-btn { padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 6px; border: 1px solid #667eea; background: white; color: #667eea; cursor: pointer; transition: all 0.2s ease; text-transform: none; white-space: nowrap; }
 .selection-btn:hover:not(:disabled) { background: #667eea; color: white; }
 .selection-btn:disabled { opacity: 0.4; cursor: not-allowed; border-color: #ccc; color: #999; }
 .info-message { background: #e3f2fd; border-left: 4px solid #2196f3; color: #1565c0; }
