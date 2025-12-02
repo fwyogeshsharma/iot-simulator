@@ -99,13 +99,7 @@ Request payload with Bearer token: symbiot_ec287b05b25fc837a603a850c -
 
 Response will be 201 created.
 
-The tables in the tracking project are as follows -
 
 
-devices, device_data, profiles
 
 
-Also let me tell you one more thing. Again its just for better way to handle things.
-So I think, the UI should have settings for a given user such that if user email is chosen and its corresponding other fields are chosen and then set once then next time,
-it shouldn't be required to reset the same things again unless user changes it explicitly.
-So its a kind of settings. Therefore, once user is chosen and its setting is set then next time simulate button is enough to send the data.

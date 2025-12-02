@@ -641,12 +641,12 @@ public class SimulationManager {
                     valueMap.put("percentage", Math.round(newValue * 10.0) / 10.0);
                     dataPoint.put("value", valueMap);
                 } else if (fieldName.equals("temperature") || fieldName.contains("temperature")) {
-                    // Temperature in Celsius
-                    newValue = base + (random.nextDouble() * variation * 2 - variation);
-                    Map<String, Object> valueMap = new LinkedHashMap<>();
-                    valueMap.put("celsius", Math.round(newValue * 10.0) / 10.0);
-                    dataPoint.put("value", valueMap);
-                    dataPoint.put("unit", "°C");
+                    // Temperature in Fahrenheit (convert from Celsius base value in specs)
+                    // Specs typically have Celsius values (e.g., 22.5°C), convert to Fahrenheit
+                    double tempCelsius = base + (random.nextDouble() * variation * 2 - variation);
+                    double tempFahrenheit = (tempCelsius * 9.0 / 5.0) + 32.0;
+                    dataPoint.put("value", Math.round(tempFahrenheit * 10.0) / 10.0);
+                    dataPoint.put("unit", "°F");
                 } else if (fieldName.equals("pressure") || fieldName.contains("pressure")) {
                     // Skip atmospheric pressure for environmental sensors - not in allowed data types
                     // Only bed pad sensors support "pressure" data type
