@@ -733,8 +733,8 @@ public class SimulationManager {
                     .withSecond(0)
                     .withNano(0);
 
-                // Return as US 12-hour format string (e.g., "2:30 PM")
-                java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US);
+                // Return as 24-hour format string (e.g., "14:30")
+                java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
                 return futureTime.format(formatter);
             } else if ("location".equals(config.getDataType())) {
                 // Special handling for GPS location data (check data type, not config)
@@ -1044,8 +1044,8 @@ public class SimulationManager {
                         .withSecond(0)
                         .withNano(0);
 
-                    // Return as US 12-hour format string (e.g., "2:30 PM")
-                    java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US);
+                    // Return as 24-hour format string (e.g., "14:30")
+                    java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
                     return futureTime.format(formatter);
                 } else {
                     double min = ((Number) conf.getOrDefault("min", 0)).doubleValue();
