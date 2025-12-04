@@ -431,8 +431,12 @@ export class AppComponent implements OnInit, OnDestroy {
         console.log('Medication adherence simulated:', response);
         this.lastMedicationResponse = response;
         if (response.success) {
-          this.medicationSimulationMessage = `Successfully created ${response.totalLogsCreated} medication logs ` +
-            `(Taken: ${response.takenCount}, Late: ${response.lateCount}, Missed: ${response.missedCount})`;
+          if (response.totalLogsCreated === 0) {
+            this.medicationSimulationMessage = response.message || 'No new logs needed - medication adherence is already up to date';
+          } else {
+            this.medicationSimulationMessage = `Successfully created ${response.totalLogsCreated} medication logs ` +
+              `(Taken: ${response.takenCount}, Late: ${response.lateCount}, Missed: ${response.missedCount})`;
+          }
         } else {
           this.medicationSimulationMessage = response.message || 'Failed to simulate medication adherence';
         }

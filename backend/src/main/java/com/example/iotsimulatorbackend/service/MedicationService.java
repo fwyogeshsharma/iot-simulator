@@ -115,12 +115,11 @@ public class MedicationService {
                             continue;
                         }
 
-                        // Skip if we already have a log for this exact scheduled time
-                        if (lastLoggedTimestamp != null && !scheduledDateTime.isAfter(lastLoggedTimestamp)) {
-                            // Check more precisely - same date and same scheduled_time
-                            if (hasExistingLog(scheduleId, elderlyPersonId, date, scheduledTime, entity)) {
-                                continue;
-                            }
+                        // Always check if we already have a log for this exact date and scheduled_time
+                        // This prevents duplicate entries on subsequent clicks
+                        if (hasExistingLog(scheduleId, elderlyPersonId, date, scheduledTime, entity)) {
+                            System.out.println("    Skipping existing log for " + date + " " + scheduledTime);
+                            continue;
                         }
 
                         // Generate the log
@@ -141,8 +140,14 @@ public class MedicationService {
                 }
             }
 
-            MedicationSimulationResponse response = new MedicationSimulationResponse(true,
-                "Successfully simulated medication adherence");
+            String message;
+            if (allLogsCreated.isEmpty()) {
+                message = "No new logs needed - all medication schedules for this person already have adherence logs up to the current time";
+            } else {
+                message = "Successfully created " + allLogsCreated.size() + " medication adherence logs";
+            }
+
+            MedicationSimulationResponse response = new MedicationSimulationResponse(true, message);
             response.setTotalLogsCreated(allLogsCreated.size());
             response.setTakenCount(takenCount);
             response.setLateCount(lateCount);
@@ -256,22 +261,33 @@ public class MedicationService {
 
     private boolean hasExistingLog(String scheduleId, String elderlyPersonId, LocalDate date, String scheduledTime, HttpEntity<String> entity) {
         try {
-            // Check for logs on this date with this scheduled_time
-            String startOfDay = date.atStartOfDay().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "+00";
-            String endOfDay = date.plusDays(1).atStartOfDay().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "+00";
-
+            // Query all logs for this schedule, elderly person, and scheduled_time
+            // Then filter by date in code to avoid timestamp format issues
             String url = medicationAdherenceLogsUrl +
                 "?schedule_id=eq." + scheduleId +
                 "&elderly_person_id=eq." + elderlyPersonId +
                 "&scheduled_time=eq." + scheduledTime +
-                "&timestamp=gte." + startOfDay +
-                "&timestamp=lt." + endOfDay;
+                "&select=id,timestamp";
 
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
             JsonNode jsonArray = objectMapper.readTree(response.getBody());
-            return jsonArray.size() > 0;
+
+            // Check if any log exists for this specific date
+            for (JsonNode logNode : jsonArray) {
+                if (logNode.has("timestamp") && !logNode.get("timestamp").isNull()) {
+                    String timestampStr = logNode.get("timestamp").asText();
+                    // Extract just the date part (first 10 characters: YYYY-MM-DD)
+                    String logDateStr = timestampStr.substring(0, 10);
+                    if (logDateStr.equals(date.toString())) {
+                        System.out.println("    Found existing log for " + date + " " + scheduledTime);
+                        return true;
+                    }
+                }
+            }
+            return false;
         } catch (Exception e) {
             System.err.println("Error checking existing log: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }

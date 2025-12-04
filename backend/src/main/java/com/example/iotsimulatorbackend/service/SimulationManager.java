@@ -35,6 +35,9 @@ public class SimulationManager {
     private SimulatorService simulatorService;
 
     @Autowired
+    private MedicationService medicationService;
+
+    @Autowired
     private RestTemplate restTemplate;
 
     @Autowired
@@ -82,6 +85,29 @@ public class SimulationManager {
                 return null;
             }
 
+            // Check if any selected device is a medication dispenser
+            boolean hasMedicationDevice = devicesToSimulate.stream()
+                .anyMatch(d -> "medication".equalsIgnoreCase(d.getDeviceType()));
+
+            // If medication device is selected, run medication adherence simulation
+            if (hasMedicationDevice) {
+                logger.info("💊 Medication dispenser detected - running medication adherence simulation...");
+                try {
+                    var medicationResult = medicationService.simulateMedicationAdherence(elderlyPersonId);
+                    if (medicationResult.isSuccess()) {
+                        logger.info("💊 Medication simulation: {} logs created (taken: {}, late: {}, missed: {})",
+                            medicationResult.getTotalLogsCreated(),
+                            medicationResult.getTakenCount(),
+                            medicationResult.getLateCount(),
+                            medicationResult.getMissedCount());
+                    } else {
+                        logger.warn("💊 Medication simulation: {}", medicationResult.getMessage());
+                    }
+                } catch (Exception e) {
+                    logger.error("💊 Medication simulation failed: {}", e.getMessage());
+                }
+            }
+
             // Create statistics tracking for this simulation
             SimulationStatistics statistics = new SimulationStatistics(simulationId);
             simulationStats.put(simulationId, statistics);
@@ -101,6 +127,9 @@ public class SimulationManager {
             devicesToSimulate.forEach(d ->
                 logger.info("   ├─ Device: {} ({})", d.getDeviceName(), d.getDeviceId())
             );
+            if (hasMedicationDevice) {
+                logger.info("   💊 Medication adherence simulation included");
+            }
             logger.info("═══════════════════════════════════════════════════════════════════════════════════════");
             return simulationId;
         } catch (Exception e) {
