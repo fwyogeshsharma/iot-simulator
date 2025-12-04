@@ -106,6 +106,55 @@
       </p>
     </div>
 
+    <!-- Medication Adherence Simulation (shows when ONLY medication dispenser is selected) -->
+    <div class="form-section medication-section" *ngIf="selectedProfile && hasMedicationDeviceOnly()">
+      <div class="section-header">
+        <span class="section-icon">💊</span>
+        <label>Simulate Medication Adherence</label>
+      </div>
+      <div class="medication-info">
+        <p class="help-text">
+          This will generate medication adherence logs for all active medication schedules
+          for the past 15 days. Logs will be created with realistic status distribution
+          (70% taken, 20% late, 10% missed).
+        </p>
+      </div>
+      <button
+        type="button"
+        (click)="simulateMedicationAdherence()"
+        [disabled]="simulatingMedication"
+        class="simulate-medication-btn"
+      >
+        <span *ngIf="!simulatingMedication">💊 Simulate Medication Adherence</span>
+        <span *ngIf="simulatingMedication">Simulating...</span>
+      </button>
+
+      <!-- Medication Simulation Result -->
+      <div class="generated-data" *ngIf="medicationSimulationMessage">
+        <div class="message" [class.success]="lastMedicationResponse?.success" [class.error]="!lastMedicationResponse?.success">
+          {{medicationSimulationMessage}}
+        </div>
+        <div *ngIf="lastMedicationResponse?.success && lastMedicationResponse?.totalLogsCreated" class="medication-stats">
+          <div class="stat-row">
+            <span class="stat-label">Total Logs Created:</span>
+            <span class="stat-value">{{lastMedicationResponse?.totalLogsCreated}}</span>
+          </div>
+          <div class="stat-row taken">
+            <span class="stat-label">Taken:</span>
+            <span class="stat-value">{{lastMedicationResponse?.takenCount}}</span>
+          </div>
+          <div class="stat-row late">
+            <span class="stat-label">Late:</span>
+            <span class="stat-value">{{lastMedicationResponse?.lateCount}}</span>
+          </div>
+          <div class="stat-row missed">
+            <span class="stat-label">Missed:</span>
+            <span class="stat-value">{{lastMedicationResponse?.missedCount}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Model-Based Data Generation (shows when single device with model is selected) -->
     <div class="form-section model-section" *ngIf="selectedSingleDevice && selectedSingleDevice.modelId">
       <div class="section-header">

@@ -90,6 +90,16 @@ interface ModelDataResponse {
   error?: string;
 }
 
+interface MedicationSimulationResponse {
+  success: boolean;
+  message: string;
+  totalLogsCreated?: number;
+  takenCount?: number;
+  lateCount?: number;
+  missedCount?: number;
+  logsCreated?: Array<any>;
+}
+
 interface Settings {
   email: string;
   selectedDeviceIds: string[];
@@ -127,6 +137,11 @@ export class AppComponent implements OnInit, OnDestroy {
   generatingModelData = false;
   lastModelDataResponse: ModelDataResponse | null = null;
   modelDataMessage = '';
+
+  // Medication adherence simulation
+  simulatingMedication = false;
+  lastMedicationResponse: MedicationSimulationResponse | null = null;
+  medicationSimulationMessage = '';
 
   settings: Settings | null = null;
 
@@ -392,6 +407,45 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
+  hasMedicationDeviceOnly(): boolean {
+    // Only show medication simulation when exactly one device is selected
+    // and that device is a medication dispenser
+    if (this.selectedDeviceIds.size !== 1) return false;
+    const selectedDeviceId = Array.from(this.selectedDeviceIds)[0];
+    const device = this.devices.find(d => d.id === selectedDeviceId);
+    return device?.deviceType === 'medication';
+  }
+
+  simulateMedicationAdherence() {
+    if (!this.selectedProfile) return;
+
+    this.simulatingMedication = true;
+    this.medicationSimulationMessage = '';
+    this.lastMedicationResponse = null;
+
+    this.http.post<MedicationSimulationResponse>(
+      `${environment.backendUrl}/medication/simulate/${this.selectedProfile.id}`,
+      {}
+    ).subscribe({
+      next: (response) => {
+        console.log('Medication adherence simulated:', response);
+        this.lastMedicationResponse = response;
+        if (response.success) {
+          this.medicationSimulationMessage = `Successfully created ${response.totalLogsCreated} medication logs ` +
+            `(Taken: ${response.takenCount}, Late: ${response.lateCount}, Missed: ${response.missedCount})`;
+        } else {
+          this.medicationSimulationMessage = response.message || 'Failed to simulate medication adherence';
+        }
+        this.simulatingMedication = false;
+      },
+      error: (err) => {
+        console.error('Failed to simulate medication adherence:', err);
+        this.medicationSimulationMessage = `Error: ${err.error?.message || err.message}`;
+        this.simulatingMedication = false;
+      }
+    });
+  }
+
   isDeviceSelected(deviceId: string): boolean {
     return this.selectedDeviceIds.has(deviceId);
   }
@@ -532,6 +586,10 @@ export class AppComponent implements OnInit, OnDestroy {
     this.generatingModelData = false;
     this.lastModelDataResponse = null;
     this.modelDataMessage = '';
+    // Clear medication simulation state
+    this.simulatingMedication = false;
+    this.lastMedicationResponse = null;
+    this.medicationSimulationMessage = '';
     this.message = 'Settings reset.';
     if (this.isSimulating) {
       this.stopSimulation();

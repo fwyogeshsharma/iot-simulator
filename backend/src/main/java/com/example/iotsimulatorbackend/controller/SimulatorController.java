@@ -9,8 +9,11 @@ import com.example.iotsimulatorbackend.model.GeofencePlace;
 import com.example.iotsimulatorbackend.model.SensorGenerateRequest;
 import com.example.iotsimulatorbackend.model.DeviceCompany;
 import com.example.iotsimulatorbackend.model.DeviceModel;
+import com.example.iotsimulatorbackend.model.MedicationSimulationRequest;
+import com.example.iotsimulatorbackend.model.MedicationSimulationResponse;
 import com.example.iotsimulatorbackend.service.SimulatorService;
 import com.example.iotsimulatorbackend.service.SimulationManager;
+import com.example.iotsimulatorbackend.service.MedicationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +30,9 @@ public class SimulatorController {
 
     @Autowired
     private SimulationManager simulationManager;
+
+    @Autowired
+    private MedicationService medicationService;
 
     @GetMapping("/devices/{elderlyPersonId}")
     public ResponseEntity<List<Device>> getDevices(@PathVariable String elderlyPersonId) {
@@ -150,5 +156,16 @@ public class SimulatorController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(model);
+    }
+
+    @PostMapping("/medication/simulate/{profileId}")
+    public ResponseEntity<MedicationSimulationResponse> simulateMedicationAdherence(
+            @PathVariable String profileId) {
+        MedicationSimulationResponse response = medicationService.simulateMedicationAdherence(profileId);
+        if (response.isSuccess()) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.badRequest().body(response);
+        }
     }
 }
