@@ -103,7 +103,6 @@ interface MedicationSimulationResponse {
 
 interface Settings {
   email: string;
-  selectedDeviceIds: string[];
 }
 
 @Component({
@@ -256,7 +255,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   checkActiveSimulation() {
     if (!this.selectedProfile) {
-      this.restoreFromLocalSettings();
+      this.checkForSingleDeviceSelection();
       return;
     }
 
@@ -283,37 +282,18 @@ export class AppComponent implements OnInit, OnDestroy {
 
           // Start statistics polling
           this.startStatisticsPolling();
-        } else {
-          // No active simulation - restore from local settings
-          this.restoreFromLocalSettings();
         }
+        // No active simulation - keep all devices selected (default behavior)
 
         // Check if only one device is selected and load sensors automatically
         this.checkForSingleDeviceSelection();
       },
       error: (err) => {
         console.error('Failed to check active simulation:', err);
-        // Fall back to local settings on error
-        this.restoreFromLocalSettings();
+        // On error, keep all devices selected (default behavior)
         this.checkForSingleDeviceSelection();
       }
     });
-  }
-
-  restoreFromLocalSettings() {
-    // Restore previously selected devices from settings if available and same elderly person
-    if (this.settings && this.settings.selectedDeviceIds && this.settings.selectedDeviceIds.length > 0) {
-      // Only restore if we're loading the same elderly person (check by comparing email in settings)
-      if (this.settings.email === this.selectedProfile?.email) {
-        // Validate that all saved device IDs still exist in current devices
-        const validDeviceIds = this.settings.selectedDeviceIds.filter(id =>
-          this.devices.some(d => d.id === id)
-        );
-        if (validDeviceIds.length > 0) {
-          this.selectedDeviceIds = new Set(validDeviceIds);
-        }
-      }
-    }
   }
 
   toggleDeviceSelection(deviceId: string) {
@@ -325,19 +305,16 @@ export class AppComponent implements OnInit, OnDestroy {
 
     // Load data types if exactly one device is selected
     this.checkForSingleDeviceSelection();
-    this.saveSettings();
   }
 
   selectAllDevices() {
     this.selectedDeviceIds = new Set(this.devices.map(d => d.id));
     this.checkForSingleDeviceSelection();
-    this.saveSettings();
   }
 
   unselectAllDevices() {
     this.selectedDeviceIds.clear();
     this.checkForSingleDeviceSelection();
-    this.saveSettings();
   }
 
   checkForSingleDeviceSelection() {
@@ -608,8 +585,7 @@ export class AppComponent implements OnInit, OnDestroy {
   saveSettings() {
     if (this.selectedProfile) {
       this.settings = {
-        email: this.selectedProfile.email,
-        selectedDeviceIds: Array.from(this.selectedDeviceIds)
+        email: this.selectedProfile.email
       };
       localStorage.setItem('simulatorSettings', JSON.stringify(this.settings));
     }
