@@ -1,5 +1,7 @@
 package com.example.iotsimulatorbackend.model;
 
+import java.util.List;
+
 public class SimulationResponse {
     private String simulationId;        // Unique ID for this simulation session
     private String status;              // "running" or "stopped"
@@ -7,6 +9,7 @@ public class SimulationResponse {
     private int deviceCount;            // Number of devices being simulated
     private int dataTypeCount;          // Total number of data type configs
     private String message;
+    private List<String> deviceIds;     // List of device IDs being simulated
 
     // Constructors
     public SimulationResponse() {}
@@ -19,6 +22,12 @@ public class SimulationResponse {
         this.deviceCount = deviceCount;
         this.dataTypeCount = dataTypeCount;
         this.message = message;
+    }
+
+    public SimulationResponse(String simulationId, String status, String elderlyPersonId,
+                             int deviceCount, int dataTypeCount, String message, List<String> deviceIds) {
+        this(simulationId, status, elderlyPersonId, deviceCount, dataTypeCount, message);
+        this.deviceIds = deviceIds;
     }
 
     // Getters and setters
@@ -39,4 +48,7 @@ public class SimulationResponse {
 
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
+
+    public List<String> getDeviceIds() { return deviceIds; }
+    public void setDeviceIds(List<String> deviceIds) { this.deviceIds = deviceIds; }
 }

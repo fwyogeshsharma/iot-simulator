@@ -95,6 +95,36 @@ public class SimulatorController {
         ));
     }
 
+    @GetMapping("/simulation/active/{elderlyPersonId}")
+    public ResponseEntity<SimulationResponse> getActiveSimulation(@PathVariable String elderlyPersonId) {
+        String activeSimulationId = simulationManager.getActiveSimulationForElderlyPerson(elderlyPersonId);
+
+        if (activeSimulationId == null) {
+            return ResponseEntity.ok(new SimulationResponse(
+                null,
+                "none",
+                elderlyPersonId,
+                0,
+                0,
+                "No active simulation for this elderly person"
+            ));
+        }
+
+        // Get the device IDs being simulated
+        java.util.List<String> deviceIds = simulationManager.getSimulationDeviceIds(activeSimulationId);
+        int deviceCount = deviceIds != null ? deviceIds.size() : 0;
+
+        return ResponseEntity.ok(new SimulationResponse(
+            activeSimulationId,
+            "running",
+            elderlyPersonId,
+            deviceCount,
+            0,
+            "Active simulation found",
+            deviceIds
+        ));
+    }
+
     @GetMapping("/simulation/statistics/{simulationId}")
     public ResponseEntity<SimulationStatistics> getSimulationStatistics(@PathVariable String simulationId) {
         SimulationStatistics statistics = simulationManager.getSimulationStatistics(simulationId);

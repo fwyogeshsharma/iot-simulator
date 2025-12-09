@@ -99,6 +99,7 @@ Request payload with Bearer token: symbiot_ec287b05b25fc837a603a850c -
 
 Response will be 201 created.
 
+The relavent supabase tables are exported as CSV here - C:\Users\sjain\github\symbIOT\tables
 
 
 

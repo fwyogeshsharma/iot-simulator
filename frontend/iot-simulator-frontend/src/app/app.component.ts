@@ -31,6 +31,7 @@ interface SimulationResponse {
   message: string;
   deviceCount?: number;
   dataTypeCount?: number;
+  deviceIds?: string[];
 }
 
 interface SimulationStatistics {
@@ -243,28 +244,76 @@ export class AppComponent implements OnInit, OnDestroy {
         this.lastModelDataResponse = null;
         this.modelDataMessage = '';
 
-        // Restore previously selected devices from settings if available and same elderly person
-        if (this.settings && this.settings.selectedDeviceIds && this.settings.selectedDeviceIds.length > 0) {
-          // Only restore if we're loading the same elderly person (check by comparing email in settings)
-          if (this.settings.email === this.selectedProfile?.email) {
-            // Validate that all saved device IDs still exist in current devices
-            const validDeviceIds = this.settings.selectedDeviceIds.filter(id =>
-              this.devices.some(d => d.id === id)
-            );
-            if (validDeviceIds.length > 0) {
-              this.selectedDeviceIds = new Set(validDeviceIds);
-            }
-          }
-        }
-
-        // Check if only one device is selected and load sensors automatically
-        this.checkForSingleDeviceSelection();
+        // Check for active simulation first (overrides local settings)
+        this.checkActiveSimulation();
       },
       error: (err) => {
         console.error('Failed to load devices from backend:', err);
         this.devices = [];
       }
     });
+  }
+
+  checkActiveSimulation() {
+    if (!this.selectedProfile) {
+      this.restoreFromLocalSettings();
+      return;
+    }
+
+    // Check if there's an active simulation on the backend
+    this.http.get<SimulationResponse>(
+      `${environment.backendUrl}/simulation/active/${this.selectedProfile.id}`
+    ).subscribe({
+      next: (response) => {
+        console.log('Active simulation check:', response);
+
+        if (response.status === 'running' && response.simulationId) {
+          // Active simulation found - restore its state
+          this.simulationId = response.simulationId;
+          this.isSimulating = true;
+          this.simulationStatus = 'running';
+
+          // Restore the selected devices from the simulation
+          if (response.deviceIds && response.deviceIds.length > 0) {
+            this.selectedDeviceIds = new Set(response.deviceIds);
+            console.log('Restored device selection from active simulation:', response.deviceIds);
+          }
+
+          this.message = `Simulation Running - Generating data for ${this.selectedDeviceIds.size} device(s)`;
+
+          // Start statistics polling
+          this.startStatisticsPolling();
+        } else {
+          // No active simulation - restore from local settings
+          this.restoreFromLocalSettings();
+        }
+
+        // Check if only one device is selected and load sensors automatically
+        this.checkForSingleDeviceSelection();
+      },
+      error: (err) => {
+        console.error('Failed to check active simulation:', err);
+        // Fall back to local settings on error
+        this.restoreFromLocalSettings();
+        this.checkForSingleDeviceSelection();
+      }
+    });
+  }
+
+  restoreFromLocalSettings() {
+    // Restore previously selected devices from settings if available and same elderly person
+    if (this.settings && this.settings.selectedDeviceIds && this.settings.selectedDeviceIds.length > 0) {
+      // Only restore if we're loading the same elderly person (check by comparing email in settings)
+      if (this.settings.email === this.selectedProfile?.email) {
+        // Validate that all saved device IDs still exist in current devices
+        const validDeviceIds = this.settings.selectedDeviceIds.filter(id =>
+          this.devices.some(d => d.id === id)
+        );
+        if (validDeviceIds.length > 0) {
+          this.selectedDeviceIds = new Set(validDeviceIds);
+        }
+      }
+    }
   }
 
   toggleDeviceSelection(deviceId: string) {

@@ -60,6 +60,7 @@ public class SimulationManager {
             logger.info("✓ Previous simulation stopped successfully");
         }
 
+
         String simulationId = UUID.randomUUID().toString();
 
         // Get all devices for this elderly person
@@ -74,16 +75,20 @@ public class SimulationManager {
                     if (specificDeviceIds.contains(device.getId())) {
                         devicesToSimulate.add(device);
                     }
+
                 }
+
             } else {
                 // Use all devices
                 devicesToSimulate.addAll(allDevices);
             }
 
+
             if (devicesToSimulate.isEmpty()) {
                 logger.warn("No devices found for elderly person ID: {}", elderlyPersonId);
                 return null;
             }
+
 
             // Check if any selected device is a medication dispenser
             boolean hasMedicationDevice = devicesToSimulate.stream()
@@ -103,10 +108,13 @@ public class SimulationManager {
                     } else {
                         logger.warn("💊 Medication simulation: {}", medicationResult.getMessage());
                     }
+
                 } catch (Exception e) {
                     logger.error("💊 Medication simulation failed: {}", e.getMessage());
                 }
+
             }
+
 
             // Create statistics tracking for this simulation
             SimulationStatistics statistics = new SimulationStatistics(simulationId);
@@ -130,13 +138,16 @@ public class SimulationManager {
             if (hasMedicationDevice) {
                 logger.info("   💊 Medication adherence simulation included");
             }
+
             logger.info("═══════════════════════════════════════════════════════════════════════════════════════");
             return simulationId;
         } catch (Exception e) {
             logger.error("❌ ERROR starting simulation for elderly person: {}", elderlyPersonId, e);
             return null;
         }
+
     }
+
 
     /**
      * Stop a simulation
@@ -153,6 +164,7 @@ public class SimulationManager {
                 elderlyPersonToSimulation.remove(elderlyPersonId);
             }
 
+
             // Log statistics summary
             SimulationStatistics stats = simulationStats.get(simulationId);
             if (stats != null) {
@@ -166,10 +178,13 @@ public class SimulationManager {
                 logger.info("   Data Points/Minute: {:.2f}", stats.getDataPointsPerMinute());
                 logger.info("═══════════════════════════════════════════════════════════════════════════════════════");
             }
+
             return true;
         }
+
         return false;
     }
+
 
     /**
      * Get simulation status
@@ -178,12 +193,34 @@ public class SimulationManager {
         return activeSimulations.containsKey(simulationId);
     }
 
+/**     * Get active simulation ID for an elderly person     */
+    public String getActiveSimulationForElderlyPerson(String elderlyPersonId) {
+        String simulationId = elderlyPersonToSimulation.get(elderlyPersonId);
+        if (simulationId != null && activeSimulations.containsKey(simulationId)) {
+            return simulationId;
+        }
+        return null;
+    }
+
+    /**
+     * Get device IDs for an active simulation
+     */
+    public List<String> getSimulationDeviceIds(String simulationId) {
+        SimulationTask task = activeSimulations.get(simulationId);
+        if (task != null) {
+            return task.getDeviceIds();
+        }
+        return null;
+    }
+
+
     /**
      * Get simulation statistics
      */
     public SimulationStatistics getSimulationStatistics(String simulationId) {
         return simulationStats.get(simulationId);
     }
+
 
     /**
      * Inner class to handle individual simulation tasks
@@ -208,6 +245,7 @@ public class SimulationManager {
             throw new Exception("Device not found with ID: " + deviceId);
         }
 
+
         logger.info("📱 Device: {} ({})", targetDevice.getDeviceName(), targetDevice.getDeviceId());
 
         // Check if device has model specifications
@@ -216,6 +254,7 @@ public class SimulationManager {
             logger.warn("⚠️  No model specifications found for device: {}", deviceId);
             throw new Exception("No model specifications available for this device");
         }
+
 
         logger.info("📋 Model: {} ({})", targetDevice.getModelName(), targetDevice.getCompanyName());
         logger.info("   Specifications contain {} fields", specs.size());
@@ -242,7 +281,9 @@ public class SimulationManager {
                             matchingConfig = config;
                             break;
                         }
+
                     }
+
 
                     if (matchingConfig != null) {
                         Map<String, Object> dataPoint = new LinkedHashMap<>();
@@ -251,19 +292,25 @@ public class SimulationManager {
                         if (matchingConfig.getUnit() != null && !matchingConfig.getUnit().isEmpty()) {
                             dataPoint.put("unit", matchingConfig.getUnit());
                         }
+
                         dataPoints.add(dataPoint);
                         logger.info("   Generated {} from data type config", dataType);
                     } else {
                         logger.warn("   No config found for data type: {}", dataType);
                     }
+
                 }
+
             }
+
         }
+
 
         if (dataPoints.isEmpty()) {
             logger.warn("⚠️  No simulatable data fields found in specifications or supported_data_types");
             throw new Exception("No simulatable data fields in model specifications. Ensure the model has numeric specification values or supported_data_types with matching device_type_data_configs.");
         }
+
 
         int successCount = 0;
         int failCount = 0;
@@ -281,10 +328,12 @@ public class SimulationManager {
                     payload.put("unit", dataPoint.get("unit"));
                 }
 
+
                 // Include location if available
                 if (targetDevice.getLocation() != null && !targetDevice.getLocation().trim().isEmpty()) {
                     payload.put("location", targetDevice.getLocation());
                 }
+
 
                 // Send to device-ingest endpoint
                 HttpHeaders headers = new HttpHeaders();
@@ -304,11 +353,14 @@ public class SimulationManager {
                     failCount++;
                     logger.warn("   ✗ {} - Status: {}", dataPoint.get("data_type"), response.getStatusCode());
                 }
+
             } catch (Exception e) {
                 failCount++;
                 logger.warn("   ✗ {} - Error: {}", dataPoint.get("data_type"), e.getMessage());
             }
+
         }
+
 
         long totalTime = System.currentTimeMillis() - startTime;
 
@@ -329,10 +381,12 @@ public class SimulationManager {
         } else {
             logger.warn("⚠️  PARTIAL - {}/{} data points sent ({}ms)", successCount, dataPoints.size(), totalTime);
         }
+
         logger.info("═══════════════════════════════════════════════════════════════════");
 
         return result;
     }
+
 
     /**
      * Generate and send data for a single sensor/device
@@ -353,10 +407,12 @@ public class SimulationManager {
             throw new Exception("Device not found with ID: " + deviceId);
         }
 
+
         logger.info("📱 Device: {} ({})", targetDevice.getDeviceName(), targetDevice.getDeviceId());
         if (location != null && !location.trim().isEmpty()) {
             logger.info("📍 Location: {}", location);
         }
+
 
         // Step 2: Get the data type configuration
         List<DataTypeConfig> configs = simulatorService.getDataTypesByDeviceId(deviceId);
@@ -367,12 +423,15 @@ public class SimulationManager {
                 targetConfig = config;
                 break;
             }
+
         }
+
 
         if (targetConfig == null) {
             logger.error("❌ FAILED: Sensor '{}' not found for this device", dataType);
             throw new Exception("Data type not found: " + dataType + " for device: " + deviceId);
         }
+
 
         logger.info("🔧 Sensor: {} ({})", targetConfig.getDisplayName(), dataType);
 
@@ -380,6 +439,7 @@ public class SimulationManager {
         if (unit != null && unit.trim().isEmpty()) {
             unit = null;
         }
+
 
         // Step 3: Special handling for location data with geofences
         // Generate GPS data for ONE random geofence to trigger entry/exit event
@@ -403,10 +463,12 @@ public class SimulationManager {
                     payload.put("unit", unit);
                 }
 
+
                 // Include location if provided
                 if (location != null && !location.trim().isEmpty()) {
                     payload.put("location", location);
                 }
+
 
                 // Send to device-ingest endpoint
                 HttpHeaders headers = new HttpHeaders();
@@ -455,9 +517,12 @@ public class SimulationManager {
                     logger.info("═══════════════════════════════════════════════════════════════════");
                 }
 
+
                 return result;
             }
+
         }
+
 
         // Step 4: For non-location data, generate single value as before
         Object generatedValue = generateValue(targetConfig);
@@ -469,6 +534,7 @@ public class SimulationManager {
         } else {
             valueDisplay = generatedValue + (unit != null ? " " + unit : "");
         }
+
         logger.info("   → Value: {}", valueDisplay);
 
         // Step 5: Create payload
@@ -481,10 +547,12 @@ public class SimulationManager {
             payload.put("unit", unit);
         }
 
+
         // Include location if provided
         if (location != null && !location.trim().isEmpty()) {
             payload.put("location", location);
         }
+
 
         // Step 6: Send to device-ingest endpoint
         HttpHeaders headers = new HttpHeaders();
@@ -523,6 +591,7 @@ public class SimulationManager {
                 result.put("message", "Failed to send data - Status: " + response.getStatusCode());
                 result.put("error", response.getBody());
             }
+
         } catch (Exception e) {
             long totalTime = System.currentTimeMillis() - startTime;
             logger.error("❌ FAILED: {} ({}ms)", e.getMessage(), totalTime);
@@ -533,8 +602,10 @@ public class SimulationManager {
             result.put("error", e.getMessage());
         }
 
+
         return result;
     }
+
 
     /**
      * Get a device by its ID directly from Supabase
@@ -552,6 +623,7 @@ public class SimulationManager {
             if (jsonArray.size() == 0) {
                 return null;
             }
+
 
             JsonNode deviceNode = jsonArray.get(0);
             com.example.iotsimulatorbackend.model.Device device = new com.example.iotsimulatorbackend.model.Device(
@@ -571,6 +643,7 @@ public class SimulationManager {
                 device.setLocation(deviceNode.get("location").asText());
             }
 
+
             // Set company_id and fetch company name if available
             if (deviceNode.has("company_id") && !deviceNode.get("company_id").isNull()) {
                 String companyId = deviceNode.get("company_id").asText();
@@ -581,7 +654,9 @@ public class SimulationManager {
                 if (company != null) {
                     device.setCompanyName(company.getName());
                 }
+
             }
+
 
             // Set model_id and fetch model specifications if available
             if (deviceNode.has("model_id") && !deviceNode.get("model_id").isNull()) {
@@ -595,14 +670,18 @@ public class SimulationManager {
                     device.setModelSpecifications(model.getSpecifications());
                     device.setSupportedDataTypes(model.getSupportedDataTypes());
                 }
+
             }
+
 
             return device;
         } catch (Exception e) {
             logger.error("Error fetching device by ID: {}", e.getMessage());
             throw e;
         }
+
     }
+
 
     /**
      * Generate GPS coordinates within a specific geofence boundary
@@ -631,6 +710,7 @@ public class SimulationManager {
         return result;
     }
 
+
     /**
      * Generate data based on model specifications
      * Each field in the specifications becomes a separate data point
@@ -641,6 +721,7 @@ public class SimulationManager {
         if (specifications == null || specifications.isEmpty()) {
             return dataPoints;
         }
+
 
         Random random = new Random();
 
@@ -703,6 +784,7 @@ public class SimulationManager {
                         // Skip other PM variants
                         continue;
                     }
+
                 } else if (fieldName.equals("latitude") || fieldName.equals("longitude")) {
                     // GPS coordinates - skip individual fields, handled separately
                     continue;
@@ -717,15 +799,19 @@ public class SimulationManager {
                     dataPoint.put("value", valueMap);
                 }
 
+
                 dataPoints.add(dataPoint);
             } else if (baseValue instanceof String) {
                 // String values - skip static strings like "name"
                 continue;
             }
+
         }
+
 
         return dataPoints;
     }
+
 
     /**
      * Generate a value based on data type configuration
@@ -736,6 +822,7 @@ public class SimulationManager {
             if (values != null && !values.isEmpty()) {
                 return values.get(new Random().nextInt(values.size()));
             }
+
             return "unknown";
         } else {
             Map<String, Object> conf = config.getConfig();
@@ -779,10 +866,12 @@ public class SimulationManager {
                     latMin = latRange.getOrDefault("min", -90.0);
                     latMax = latRange.getOrDefault("max", 90.0);
                 }
+
                 if (lonRange != null) {
                     lonMin = lonRange.getOrDefault("min", -180.0);
                     lonMax = lonRange.getOrDefault("max", 180.0);
                 }
+
 
                 double latitude = latMin + (Math.random() * (latMax - latMin));
                 double longitude = lonMin + (Math.random() * (lonMax - lonMin));
@@ -812,10 +901,14 @@ public class SimulationManager {
                     value = Math.round(value);
                 }
 
+
                 return value;
             }
+
         }
+
     }
+
 
     /**
      * Move from a point by bearing and distance
@@ -836,6 +929,7 @@ public class SimulationManager {
 
         return new double[]{Math.toDegrees(φ2), Math.toDegrees(λ2)};
     }
+
 
     private class SimulationTask {
         private final String simulationId;
@@ -866,6 +960,7 @@ public class SimulationManager {
             this.locationGenerators = new ConcurrentHashMap<>();
         }
 
+
         public void start() {
             isRunning = true;
 
@@ -876,6 +971,7 @@ public class SimulationManager {
             } else {
                 logger.warn("⚠️  No geofence places found - GPS will use random values");
             }
+
 
             // For each device, get its data type configs and start scheduling
             int totalScheduled = 0;
@@ -888,6 +984,7 @@ public class SimulationManager {
                         continue;
                     }
 
+
                     // For each data type config, schedule generation
                     logger.info("   └─ {} has {} sensors", device.getDeviceName(), configs.size());
                     for (DataTypeConfig config : configs) {
@@ -897,17 +994,23 @@ public class SimulationManager {
                             if (!geofencePlaces.isEmpty()) {
                                 locationGenerators.put(generatorKey, new LocationGenerator(geofencePlaces));
                             }
+
                         }
+
 
                         scheduleDataGeneration(device, config);
                         totalScheduled++;
                     }
+
                 } catch (Exception e) {
                     logger.error("❌ Error setting up simulation for device {} ({})", device.getDeviceId(), device.getDeviceName(), e);
                 }
+
             }
+
             logger.info("📊 Scheduled {} data type generators across {} devices", totalScheduled, devices.size());
         }
+
 
         private void scheduleDataGeneration(com.example.iotsimulatorbackend.model.Device device, DataTypeConfig config) {
             // Calculate interval based on frequencyPerDay from device_types table
@@ -928,6 +1031,7 @@ public class SimulationManager {
             }
 
 
+
             // Create a task key for tracking
             String taskKey = device.getId() + "_" + config.getDataType();
 
@@ -937,10 +1041,12 @@ public class SimulationManager {
                 if (isRunning) {
                     generateAndSendData(device, config);
                 }
+
             }, 0, intervalSeconds, java.util.concurrent.TimeUnit.SECONDS);
 
             scheduledTasks.put(taskKey, future);
         }
+
 
         private void generateAndSendData(com.example.iotsimulatorbackend.model.Device device, DataTypeConfig config) {
             try {
@@ -962,14 +1068,17 @@ public class SimulationManager {
                                     String.format("%.6f", generator.getCurrentLat()),
                                     String.format("%.6f", generator.getCurrentLon()));
                         }
+
                     } else {
                         // Fallback if no generator
                         generatedValue = generateValue(config);
                     }
+
                 } else {
                     // Use standard value generation
                     generatedValue = generateValue(config);
                 }
+
 
                 // Create payload
                 Map<String, Object> payload = new LinkedHashMap<>();
@@ -983,10 +1092,12 @@ public class SimulationManager {
                     payload.put("unit", unit);
                 }
 
+
                 // Include location if available
                 if (device.getLocation() != null && !device.getLocation().trim().isEmpty()) {
                     payload.put("location", device.getLocation());
                 }
+
 
                 // Send to device-ingest endpoint
                 HttpHeaders headers = new HttpHeaders();
@@ -1011,19 +1122,23 @@ public class SimulationManager {
                                 config.getDisplayName(), config.getDataType(),
                                 generatedValue, config.getUnit(), device.getDeviceId());
                     }
+
                 } else {
                     statistics.recordFailure(device.getId(), device.getDeviceName(),
                                            config.getDataType(), config.getDisplayName());
                     logger.warn("⚠️  Data send failed for {} on {} - Status: {}",
                             config.getDisplayName(), device.getDeviceId(), response.getStatusCode());
                 }
+
             } catch (Exception e) {
                 statistics.recordFailure(device.getId(), device.getDeviceName(),
                                        config.getDataType(), config.getDisplayName());
                 logger.warn("❌ Error generating/sending {} for device {} ({}): {}",
                         config.getDisplayName(), device.getDeviceName(), device.getDeviceId(), e.getMessage());
             }
+
         }
+
 
         private Object generateValue(DataTypeConfig config) {
             if ("enum".equals(config.getConfigType())) {
@@ -1032,6 +1147,7 @@ public class SimulationManager {
                 if (values != null && !values.isEmpty()) {
                     return values.get(new Random().nextInt(values.size()));
                 }
+
                 return "unknown";
             } else {
                 // Generate random value within range
@@ -1091,10 +1207,14 @@ public class SimulationManager {
                         value = Math.round(value);
                     }
 
+
                     return value;
                 }
+
             }
+
         }
+
 
         public void stop() {
             isRunning = false;
@@ -1102,11 +1222,23 @@ public class SimulationManager {
             for (ScheduledFuture<?> future : scheduledTasks.values()) {
                 future.cancel(true);
             }
+
             scheduledTasks.clear();
         }
+
 
         public String getElderlyPersonId() {
             return elderlyPersonId;
         }
+
+        public List<String> getDeviceIds() {
+            List<String> ids = new ArrayList<>();
+            for (com.example.iotsimulatorbackend.model.Device device : devices) {
+                ids.add(device.getId());
+            }
+            return ids;
+        }
+
     }
+
 }
