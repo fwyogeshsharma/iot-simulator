@@ -101,6 +101,27 @@ interface MedicationSimulationResponse {
   logsCreated?: Array<any>;
 }
 
+interface HistoricalDataResponse {
+  jobId: string;
+  status: string;
+  message: string;
+  totalDataPointsGenerated?: number;
+  daysProcessed?: number;
+  elapsedMs?: number;
+  deviceDataCounts?: { [deviceId: string]: number };
+}
+
+interface HistoricalJobStatus {
+  jobId: string;
+  status: string;
+  progress: number;
+  totalDays: number;
+  daysProcessed: number;
+  dataPointsGenerated: number;
+  currentDate?: string;
+  errorMessage?: string;
+}
+
 interface Settings {
   email: string;
 }
@@ -113,8 +134,10 @@ interface Settings {
 export class AppComponent implements OnInit, OnDestroy {
   profiles: Profile[] = [];
   devices: Device[] = [];
+  loadingDevices = false;
 
   selectedProfile: Profile | null = null;
+  selectedElderlyPersonId: string | null = null;  // Track the actual elderly person ID
   selectedDeviceIds: Set<string> = new Set();
 
   isSimulating = false;
@@ -143,6 +166,17 @@ export class AppComponent implements OnInit, OnDestroy {
   lastMedicationResponse: MedicationSimulationResponse | null = null;
   medicationSimulationMessage = '';
 
+  // Historical data generation
+  generatingHistorical = false;
+  historicalJobId: string | null = null;
+  historicalStatus: HistoricalJobStatus | null = null;
+  historicalStatusSubscription: Subscription | null = null;
+  historicalMessage = '';
+  selectedFrequency = 'medium';  // Default to medium frequency
+
+  // Tab management
+  activeTab: 'realtime' | 'historical' | 'advanced' = 'realtime';
+
   settings: Settings | null = null;
 
   constructor(private http: HttpClient) {}
@@ -150,12 +184,20 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnInit() {
     this.loadProfiles();
     this.loadSettings();
+    // Ensure frequency is initialized
+    if (!this.selectedFrequency) {
+      this.selectedFrequency = 'medium';
+    }
   }
 
   ngOnDestroy() {
     // Stop statistics polling
     if (this.statisticsSubscription) {
       this.statisticsSubscription.unsubscribe();
+    }
+    // Stop historical data polling
+    if (this.historicalStatusSubscription) {
+      this.historicalStatusSubscription.unsubscribe();
     }
     // Stop any active simulation when component is destroyed
     if (this.isSimulating && this.simulationId) {
@@ -191,6 +233,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.dataTypes = [];
     this.selectedSingleDevice = null;
     this.lastGeneratedData = null;
+    this.loadingDevices = true;
     if (!this.selectedProfile) return;
 
     // Call Supabase directly - query elderly_persons by user_id
@@ -209,16 +252,19 @@ export class AppComponent implements OnInit, OnDestroy {
 
         // For each elderly person, load their devices
         if (elderlyPersons && elderlyPersons.length > 0) {
-          // Use the first elderly person's ID to load devices
-          const elderlyPersonId = elderlyPersons[0].id;
-          this.loadDevicesForElderlyPerson(elderlyPersonId);
+          // Store and use the first elderly person's ID
+          this.selectedElderlyPersonId = elderlyPersons[0].id;
+          this.loadDevicesForElderlyPerson(this.selectedElderlyPersonId!);
         } else {
+          this.selectedElderlyPersonId = null;
           this.devices = [];
+          this.loadingDevices = false;
         }
       },
       error: (err) => {
         console.error('Failed to load elderly persons:', err);
         this.devices = [];
+        this.loadingDevices = false;
       }
     });
     this.saveSettings();
@@ -233,6 +279,7 @@ export class AppComponent implements OnInit, OnDestroy {
       next: (data) => {
         console.log('Devices loaded from backend:', data);
         this.devices = data || [];
+        this.loadingDevices = false;
 
         // Select all devices by default
         this.selectedDeviceIds = new Set(this.devices.map(d => d.id));
@@ -249,6 +296,7 @@ export class AppComponent implements OnInit, OnDestroy {
       error: (err) => {
         console.error('Failed to load devices from backend:', err);
         this.devices = [];
+        this.loadingDevices = false;
       }
     });
   }
@@ -329,6 +377,10 @@ export class AppComponent implements OnInit, OnDestroy {
       this.dataTypes = [];
       this.lastGeneratedData = null;
       this.generationMessage = '';
+      // Switch away from Advanced tab if it's currently active
+      if (this.activeTab === 'advanced') {
+        this.activeTab = 'realtime';
+      }
     }
   }
 
@@ -443,14 +495,14 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   simulateMedicationAdherence() {
-    if (!this.selectedProfile) return;
+    if (!this.selectedProfile || !this.selectedElderlyPersonId) return;
 
     this.simulatingMedication = true;
     this.medicationSimulationMessage = '';
     this.lastMedicationResponse = null;
 
     this.http.post<MedicationSimulationResponse>(
-      `${environment.backendUrl}/medication/simulate/${this.selectedProfile.id}`,
+      `${environment.backendUrl}/medication/simulate/${this.selectedElderlyPersonId}`,
       {}
     ).subscribe({
       next: (response) => {
@@ -623,5 +675,117 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.isSimulating) {
       this.stopSimulation();
     }
+  }
+
+  setActiveTab(tab: 'realtime' | 'historical' | 'advanced') {
+    this.activeTab = tab;
+  }
+
+  generateHistoricalData() {
+    if (!this.selectedProfile) {
+      this.historicalMessage = 'Please select an elderly person';
+      return;
+    }
+
+    if (!this.selectedElderlyPersonId) {
+      this.historicalMessage = 'No elderly person found for this profile';
+      return;
+    }
+
+    if (this.selectedDeviceIds.size === 0) {
+      this.historicalMessage = 'Please select at least one device';
+      return;
+    }
+
+    // Calculate date range: 6 months ago to today
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - 6);
+
+    const request = {
+      elderlyPersonId: this.selectedElderlyPersonId,  // Use actual elderly person ID, not profile ID
+      deviceIds: Array.from(this.selectedDeviceIds),
+      startDate: startDate.toISOString().split('T')[0], // Format: "2024-06-12"
+      endDate: endDate.toISOString().split('T')[0],     // Format: "2024-12-12"
+      includeAnomalies: true,
+      frequency: this.selectedFrequency  // Add frequency parameter
+    };
+
+    console.log('Starting historical data generation:', request);
+
+    this.generatingHistorical = true;
+    this.historicalMessage = '';
+    this.historicalStatus = null;
+
+    this.http.post<HistoricalDataResponse>(
+      `${environment.backendUrl}/simulation/generate-historical`,
+      request
+    ).subscribe({
+      next: (response) => {
+        console.log('Historical data generation started:', response);
+        this.historicalJobId = response.jobId;
+        this.historicalMessage = response.message;
+
+        if (response.status === 'processing') {
+          // Start polling for progress
+          this.startHistoricalStatusPolling();
+        } else {
+          this.generatingHistorical = false;
+        }
+      },
+      error: (err) => {
+        console.error('Failed to start historical data generation:', err);
+        this.historicalMessage = `Error: ${err.error?.message || err.message}`;
+        this.generatingHistorical = false;
+      }
+    });
+  }
+
+  startHistoricalStatusPolling() {
+    // Clear any existing subscription
+    this.stopHistoricalStatusPolling();
+
+    // Poll status every 1 second
+    this.historicalStatusSubscription = interval(1000).subscribe(() => {
+      this.fetchHistoricalStatus();
+    });
+
+    // Fetch immediately
+    this.fetchHistoricalStatus();
+  }
+
+  stopHistoricalStatusPolling() {
+    if (this.historicalStatusSubscription) {
+      this.historicalStatusSubscription.unsubscribe();
+      this.historicalStatusSubscription = null;
+    }
+  }
+
+  fetchHistoricalStatus() {
+    if (!this.historicalJobId) return;
+
+    this.http.get<HistoricalJobStatus>(
+      `${environment.backendUrl}/simulation/historical-status/${this.historicalJobId}`
+    ).subscribe({
+      next: (status) => {
+        this.historicalStatus = status;
+        console.log('Historical status updated:', status);
+
+        // Check if completed or failed
+        if (status.status === 'completed') {
+          this.stopHistoricalStatusPolling();
+          this.generatingHistorical = false;
+          this.historicalMessage = `Successfully generated ${status.dataPointsGenerated} data points across ${status.daysProcessed} days`;
+        } else if (status.status === 'failed') {
+          this.stopHistoricalStatusPolling();
+          this.generatingHistorical = false;
+          this.historicalMessage = `Failed: ${status.errorMessage || 'Unknown error'}`;
+        }
+      },
+      error: (err) => {
+        console.error('Failed to fetch historical status:', err);
+        // Don't stop polling on error - might be temporary
+      }
+    });
   }
 }

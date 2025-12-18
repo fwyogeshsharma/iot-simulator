@@ -11,9 +11,13 @@ import com.example.iotsimulatorbackend.model.DeviceCompany;
 import com.example.iotsimulatorbackend.model.DeviceModel;
 import com.example.iotsimulatorbackend.model.MedicationSimulationRequest;
 import com.example.iotsimulatorbackend.model.MedicationSimulationResponse;
+import com.example.iotsimulatorbackend.model.HistoricalDataRequest;
+import com.example.iotsimulatorbackend.model.HistoricalDataResponse;
+import com.example.iotsimulatorbackend.model.HistoricalJobStatus;
 import com.example.iotsimulatorbackend.service.SimulatorService;
 import com.example.iotsimulatorbackend.service.SimulationManager;
 import com.example.iotsimulatorbackend.service.MedicationService;
+import com.example.iotsimulatorbackend.service.HistoricalDataService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +37,9 @@ public class SimulatorController {
 
     @Autowired
     private MedicationService medicationService;
+
+    @Autowired
+    private HistoricalDataService historicalDataService;
 
     @GetMapping("/devices/{elderlyPersonId}")
     public ResponseEntity<List<Device>> getDevices(@PathVariable String elderlyPersonId) {
@@ -197,5 +204,34 @@ public class SimulatorController {
         } else {
             return ResponseEntity.badRequest().body(response);
         }
+    }
+
+    @PostMapping("/simulation/generate-historical")
+    public ResponseEntity<HistoricalDataResponse> generateHistoricalData(
+            @RequestBody HistoricalDataRequest request) {
+        try {
+            String jobId = historicalDataService.generateHistoricalData(request);
+            HistoricalDataResponse response = new HistoricalDataResponse(
+                jobId,
+                "processing",
+                "Generating historical data, please wait..."
+            );
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                new HistoricalDataResponse(null, "failed", "Error: " + e.getMessage())
+            );
+        }
+    }
+
+    @GetMapping("/simulation/historical-status/{jobId}")
+    public ResponseEntity<HistoricalJobStatus> getHistoricalJobStatus(@PathVariable String jobId) {
+        HistoricalJobStatus status = historicalDataService.getJobStatus(jobId);
+        if (status == null) {
+            HistoricalJobStatus notFound = new HistoricalJobStatus(jobId, "not_found");
+            notFound.setErrorMessage("Job not found");
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(status);
     }
 }

@@ -16,17 +16,31 @@ spring:
 logging:
   level:
     com.example.iotsimulatorbackend: DEBUG
+  file:
+    name: backend.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %-50logger{50} : %m%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %-50logger{50} : %m%n"
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 7
+      total-size-cap: 100MB
 
 
 supabase:
   profiles-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/profiles
   devices-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/devices
   device-data-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_data
+  device-data-bulk-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_data
   device-type-data-configs-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_type_data_configs
   device-types-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_types
   elderly-persons-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/elderly_persons
+  geofence-places-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/geofence_places
+  geofence-events-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/geofence_events
   apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpeWZjdnlwZWlmYmRhcW5mZ3JyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTgwMTI0NiwiZXhwIjoyMDc1Mzc3MjQ2fQ.aLEfYBHEgtrjH_99iwriFQTw4pMX5Up7zLq5Bxk0fhs
 
 
 simulator:
   device-ingest-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/functions/v1/device-ingest
+  device-ingest-bulk-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/functions/v1/device-ingest-bulk

@@ -44,3 +44,7 @@ Thumbs.db
 #.env.local
 *.pid
 *.seed
+
+# Root level Node modules
+node_modules/
+package-lock.json

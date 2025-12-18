@@ -1,26 +1,6 @@
-<!-- Floating IoT Elements Background -->
-<div class="floating-elements">
-  <!-- Particles -->
-  <div class="particle"></div>
-  <div class="particle"></div>
-  <div class="particle"></div>
-  <div class="particle"></div>
-  <div class="particle"></div>
-  <div class="particle"></div>
-
-  <!-- Connection Lines -->
-  <div class="connection-line"></div>
-  <div class="connection-line"></div>
-  <div class="connection-line"></div>
-
-  <!-- Healthcare Symbols -->
-  <div class="healthcare-symbol"></div>
-  <div class="healthcare-symbol"></div>
-  <div class="healthcare-symbol"></div>
-</div>
-
 <div class="container">
-  <h1>🏥 SymBIOT Simulator</h1>
+  <h1>SymBIOT Simulator</h1>
+  <p class="subtitle">IoT Health Monitoring Data Simulation Platform</p>
 
   <!-- Step Indicator -->
   <div class="step-indicator">
@@ -41,7 +21,7 @@
   <form>
     <!-- Step 1: Select Elderly Person -->
     <div class="form-section">
-      <label>👤 Select Elderly Person:</label>
+      <label>SELECT ELDERLY PERSON</label>
       <select [(ngModel)]="selectedProfile" name="profile" (change)="onProfileChange()" [disabled]="isSimulating">
         <option [ngValue]="null">-- Choose a person --</option>
         <option *ngFor="let p of profiles" [ngValue]="p">{{p.full_name}} ({{p.email}})</option>
@@ -50,7 +30,7 @@
 
     <!-- Step 2: Select Devices (Multi-select with checkboxes) -->
     <div class="form-section" *ngIf="selectedProfile && devices.length > 0">
-      <label>📱 Select Devices (All selected by default):</label>
+      <label>SELECT DEVICES (All selected by default)</label>
       <div class="device-list">
         <div *ngFor="let device of devices" class="device-item">
           <input
@@ -92,25 +72,54 @@
       </div>
     </div>
 
+    <!-- Loading Devices Message -->
+    <div class="form-section info-message" *ngIf="selectedProfile && loadingDevices">
+      <p>Loading devices...</p>
+    </div>
+
     <!-- No Devices Message -->
-    <div class="form-section info-message" *ngIf="selectedProfile && devices.length === 0">
+    <div class="form-section info-message" *ngIf="selectedProfile && !loadingDevices && devices.length === 0">
       <p>No devices found for this elderly person. Please select another person or add devices first.</p>
     </div>
 
-    <!-- Info Message: Single Device Selection Required for Individual Sensor Data -->
-    <div class="form-section info-message" *ngIf="selectedProfile && devices.length > 0 && !selectedSingleDevice">
-      <p>
-        <strong>💡 Tip:</strong> Select exactly <strong>one device</strong> to unlock additional features:
-        generate individual sensor data for each data type, and if the device has a model assigned,
-        generate model-based data using the device model's specifications.
-      </p>
+    <!-- Tab Navigation -->
+    <div class="tabs-container" *ngIf="selectedProfile && devices.length > 0 && selectedDeviceIds.size > 0">
+      <div class="tabs">
+        <button
+          class="tab"
+          [class.active]="activeTab === 'realtime'"
+          (click)="setActiveTab('realtime')"
+          type="button"
+        >
+          <span class="tab-label">Real-Time Simulation</span>
+        </button>
+        <button
+          class="tab"
+          [class.active]="activeTab === 'historical'"
+          (click)="setActiveTab('historical')"
+          type="button"
+        >
+          <span class="tab-label">Historical Data</span>
+        </button>
+        <button
+          class="tab"
+          [class.active]="activeTab === 'advanced'"
+          (click)="setActiveTab('advanced')"
+          type="button"
+          *ngIf="selectedDeviceIds.size === 1"
+        >
+          <span class="tab-label">Custom Data</span>
+        </button>
+      </div>
     </div>
 
-    <!-- Medication Adherence Simulation (shows when ONLY medication dispenser is selected) -->
-    <div class="form-section medication-section" *ngIf="selectedProfile && hasMedicationDeviceOnly()">
+    <!-- ADVANCED TAB CONTENT -->
+    <div class="tab-content" *ngIf="activeTab === 'advanced'">
+
+      <!-- Medication Adherence Simulation (shows when ONLY medication dispenser is selected) -->
+      <div class="form-section medication-section" *ngIf="selectedProfile && hasMedicationDeviceOnly()">
       <div class="section-header">
-        <span class="section-icon">💊</span>
-        <label>Simulate Medication Adherence</label>
+        <label>Medication Adherence Simulation</label>
       </div>
       <div class="medication-info">
         <p class="help-text">
@@ -125,7 +134,7 @@
         [disabled]="simulatingMedication"
         class="simulate-medication-btn"
       >
-        <span *ngIf="!simulatingMedication">💊 Simulate Medication Adherence</span>
+        <span *ngIf="!simulatingMedication">Simulate Medication Adherence</span>
         <span *ngIf="simulatingMedication">Simulating...</span>
       </button>
 
@@ -158,8 +167,7 @@
     <!-- Model-Based Data Generation (shows when single device with model is selected) -->
     <div class="form-section model-section" *ngIf="selectedSingleDevice && selectedSingleDevice.modelId">
       <div class="section-header">
-        <span class="section-icon">📊</span>
-        <label>Generate Model-Based Data</label>
+        <label>Model-Based Data Generation</label>
       </div>
       <div class="model-info">
         <div class="model-badge">
@@ -176,7 +184,7 @@
         [disabled]="generatingModelData"
         class="generate-model-btn"
       >
-        <span *ngIf="!generatingModelData">🚀 Generate Model Data</span>
+        <span *ngIf="!generatingModelData">Generate Model Data</span>
         <span *ngIf="generatingModelData">Generating...</span>
       </button>
 
@@ -199,8 +207,7 @@
     <!-- Individual Sensor Data Generation (shows when single device selected) -->
     <div class="form-section sensor-section" *ngIf="selectedSingleDevice && dataTypes.length > 0">
       <div class="section-header">
-        <span class="section-icon">🔧</span>
-        <label>Generate Individual Sensor Data</label>
+        <label>Individual Sensor Data Generation</label>
       </div>
       <div class="sensors-grid">
         <div *ngFor="let dataType of dataTypes" class="sensor-card">
@@ -226,15 +233,83 @@
       </div>
     </div>
 
-    <!-- Simulation Controls -->
-    <div class="button-group" *ngIf="selectedProfile && devices.length > 0">
+    </div><!-- End ADVANCED TAB CONTENT -->
+
+    <!-- HISTORICAL TAB CONTENT -->
+    <div class="tab-content" *ngIf="activeTab === 'historical'">
+
+      <!-- Historical Data Generation (6 Months) - Standalone Feature -->
+      <div class="form-section historical-section">
+      <div class="section-header">
+        <label>Historical Data Generation</label>
+      </div>
+
+      <div class="historical-info">
+        <p class="help-text">
+          Generate 6 months of historical data for selected devices.
+          Includes realistic time-of-day patterns, weekly variations, and rare anomalies.
+        </p>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label for="frequency">Data Frequency</label>
+        <select id="frequency" [(ngModel)]="selectedFrequency" name="frequency" class="form-control">
+          <option [value]="'high'">High (daily)</option>
+          <option [value]="'medium'">Medium (every 2 days)</option>
+          <option [value]="'low'">Low (weekly)</option>
+        </select>
+      </div>
+
+      <button
+        type="button"
+        (click)="generateHistoricalData()"
+        [disabled]="isSimulating || generatingHistorical || selectedDeviceIds.size === 0"
+        class="generate-historical-btn"
+      >
+        <span *ngIf="!generatingHistorical">Generate 6 Months Historical Data</span>
+        <span *ngIf="generatingHistorical">Generating...</span>
+      </button>
+    </div>
+
+    <!-- Historical Data Generation Progress (shown during generation or when there's a message) -->
+    <div class="form-section historical-progress-section" *ngIf="generatingHistorical || historicalMessage">
+      <div class="section-header">
+        <label *ngIf="generatingHistorical">Generating Historical Data...</label>
+        <label *ngIf="!generatingHistorical && historicalMessage">Historical Data Generation</label>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="progress-container" *ngIf="historicalStatus">
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width.%]="historicalStatus.progress"></div>
+        </div>
+        <p class="progress-text">
+          {{historicalStatus.daysProcessed}} / {{historicalStatus.totalDays}} days
+        </p>
+      </div>
+
+      <!-- Historical Data Generation Result -->
+      <div class="generated-data" *ngIf="historicalMessage">
+        <div class="message" [class.success]="historicalMessage.includes('Successfully')" [class.error]="historicalMessage.includes('Error') || historicalMessage.includes('Failed')">
+          {{historicalMessage}}
+        </div>
+      </div>
+    </div>
+
+    </div><!-- End HISTORICAL TAB CONTENT -->
+
+    <!-- REAL-TIME SIMULATION TAB CONTENT -->
+    <div class="tab-content" *ngIf="activeTab === 'realtime'">
+
+      <!-- Simulation Controls -->
+      <div class="button-group">
       <button
         type="button"
         (click)="startSimulation()"
-        [disabled]="isSimulating || selectedDeviceIds.size === 0"
+        [disabled]="isSimulating || generatingHistorical || selectedDeviceIds.size === 0"
         class="start-btn"
       >
-        ▶️ Start Simulation
+        Start Simulation
       </button>
       <button
         type="button"
@@ -242,10 +317,10 @@
         [disabled]="!isSimulating"
         class="stop-btn"
       >
-        ⏹️ Stop Simulation
+        Stop Simulation
       </button>
       <button type="button" (click)="resetSettings()" class="reset-btn">
-        🔄 Reset
+        Reset
       </button>
     </div>
 
@@ -261,6 +336,9 @@
         Each device will generate data at its configured frequency
       </p>
     </div>
+
+    </div><!-- End REAL-TIME SIMULATION TAB CONTENT -->
+
   </form>
 
   <!-- Messages -->
