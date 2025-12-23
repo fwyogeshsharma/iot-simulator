@@ -57,14 +57,11 @@ h1 {
   gap: 16px;
 }
 
-h1::before {
-  content: '';
-  display: block;
-  width: 6px;
-  height: 42px;
-  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
-  border-radius: 3px;
-  box-shadow: 0 0 30px rgba(37, 99, 235, 0.5);
+.header-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 12px rgba(59, 130, 246, 0.3));
 }
 
 .subtitle {
@@ -82,13 +79,33 @@ form > div {
 }
 
 label {
-  display: block;
+  display: flex;
+  align-items: center;
   font-weight: 600;
   color: var(--gray-700);
   margin-bottom: 10px;
   font-size: 12px;
   letter-spacing: 0.8px;
   text-transform: uppercase;
+}
+
+.step-number-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+  color: white;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 14px;
+  margin-right: 12px;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 0 8px;
+  flex-shrink: 0;
 }
 
 select,
@@ -370,13 +387,37 @@ input[type="number"]:disabled {
   margin: 40px 0 0 0;
 }
 
+.tab-section {
+  padding: 24px 0 0 0;
+  background: linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%);
+}
+
+.tab-section > label {
+  padding: 0 24px 24px 24px;
+  margin-bottom: 0;
+}
+
+.tabs-header {
+  font-weight: 600;
+  color: var(--gray-700);
+  margin-bottom: 16px;
+  font-size: 12px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  padding-left: 24px;
+}
+
 .tabs {
   display: flex;
   gap: 8px;
   padding: 8px 8px 0 8px;
+  border: 2px solid var(--gray-300);
   border-bottom: 3px solid var(--gray-300);
   background: linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%);
   border-radius: 12px 12px 0 0;
+  margin: 0 24px;
 }
 
 .tab {
@@ -426,13 +467,14 @@ input[type="number"]:disabled {
 }
 
 .tab-content {
-  padding: 36px;
+  padding: 24px;
   background: #ffffff;
-  border: 2px solid var(--gray-200);
+  border: 2px solid var(--gray-300);
   border-top: none;
   border-radius: 0 0 12px 12px;
   animation: fadeIn 0.4s ease-in;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  margin: 0 24px 24px 24px;
 }
 
 @keyframes fadeIn {
@@ -450,7 +492,7 @@ input[type="number"]:disabled {
 .button-group {
   display: flex;
   gap: 14px;
-  margin-top: 40px;
+  margin-top: 0;
 }
 
 button {
@@ -514,6 +556,33 @@ button:disabled {
   background: linear-gradient(135deg, #E5E7EB 0%, #D1D5DB 100%);
   border-color: var(--gray-400);
   color: var(--gray-800);
+}
+
+/* Simulation Starting Loader */
+.simulation-starting {
+  margin-top: 32px;
+  padding: 28px;
+  background: linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%);
+  border-radius: 12px;
+  border: 2px solid #93C5FD;
+  border-left: 5px solid var(--primary-color);
+  animation: slideIn 0.4s ease;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.2);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 3px solid rgba(37, 99, 235, 0.2);
+  border-top: 3px solid var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 /* Simulation Status */

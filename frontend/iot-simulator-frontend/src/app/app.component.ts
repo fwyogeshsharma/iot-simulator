@@ -141,6 +141,7 @@ export class AppComponent implements OnInit, OnDestroy {
   selectedDeviceIds: Set<string> = new Set();
 
   isSimulating = false;
+  startingSimulation = false;
   simulationId: string | null = null;
   simulationStatus = '';
   message = '';
@@ -538,6 +539,9 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.startingSimulation = true;
+    this.message = '';
+
     const payload = {
       elderlyPersonId: this.selectedProfile.id,
       deviceIds: Array.from(this.selectedDeviceIds) // Can be empty to simulate all
@@ -551,6 +555,7 @@ export class AppComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (response) => {
         console.log('Simulation started:', response);
+        this.startingSimulation = false;
         this.simulationId = response.simulationId;
         this.isSimulating = true;
         this.simulationStatus = 'running';
@@ -561,6 +566,7 @@ export class AppComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Failed to start simulation:', err);
+        this.startingSimulation = false;
         this.message = `Error: ${err.error?.message || err.message}`;
       }
     });
@@ -647,33 +653,6 @@ export class AppComponent implements OnInit, OnDestroy {
     const saved = localStorage.getItem('simulatorSettings');
     if (saved) {
       this.settings = JSON.parse(saved);
-    }
-  }
-
-  resetSettings() {
-    localStorage.removeItem('simulatorSettings');
-    this.settings = null;
-    this.selectedProfile = null;
-    this.selectedDeviceIds.clear();
-    this.devices = [];
-    this.statistics = null;
-    // Clear individual sensor data generation state
-    this.dataTypes = [];
-    this.selectedSingleDevice = null;
-    this.generatingDataTypeId = null;
-    this.lastGeneratedData = null;
-    this.generationMessage = '';
-    // Clear model-based data generation state
-    this.generatingModelData = false;
-    this.lastModelDataResponse = null;
-    this.modelDataMessage = '';
-    // Clear medication simulation state
-    this.simulatingMedication = false;
-    this.lastMedicationResponse = null;
-    this.medicationSimulationMessage = '';
-    this.message = 'Settings reset.';
-    if (this.isSimulating) {
-      this.stopSimulation();
     }
   }
 

@@ -1,5 +1,5 @@
 <div class="container">
-  <h1>SymBIoT Simulator</h1>
+  <h1><img src="favicon.png" alt="SymBIoT Logo" class="header-logo">SymBIoT Simulator</h1>
   <p class="subtitle">IoT Health Monitoring Data Simulation Platform</p>
 
   <!-- Step Indicator -->
@@ -21,7 +21,7 @@
   <form>
     <!-- Step 1: Select Elderly Person -->
     <div class="form-section">
-      <label>SELECT ELDERLY PERSON</label>
+      <label><span class="step-number-label">1.</span> SELECT ELDERLY PERSON</label>
       <select [(ngModel)]="selectedProfile" name="profile" (change)="onProfileChange()" [disabled]="isSimulating">
         <option [ngValue]="null">-- Choose a person --</option>
         <option *ngFor="let p of profiles" [ngValue]="p">{{p.full_name}} ({{p.email}})</option>
@@ -30,7 +30,7 @@
 
     <!-- Step 2: Select Devices (Multi-select with checkboxes) -->
     <div class="form-section" *ngIf="selectedProfile && devices.length > 0">
-      <label>SELECT DEVICES (All selected by default)</label>
+      <label><span class="step-number-label">2.</span> SELECT DEVICES (All selected by default)</label>
       <div class="device-list">
         <div *ngFor="let device of devices" class="device-item">
           <input
@@ -84,34 +84,36 @@
 
     <!-- Tab Navigation -->
     <div class="tabs-container" *ngIf="selectedProfile && devices.length > 0 && selectedDeviceIds.size > 0">
-      <div class="tabs">
-        <button
-          class="tab"
-          [class.active]="activeTab === 'realtime'"
-          (click)="setActiveTab('realtime')"
-          type="button"
-        >
-          <span class="tab-label">Real-Time Simulation</span>
-        </button>
-        <button
-          class="tab"
-          [class.active]="activeTab === 'historical'"
-          (click)="setActiveTab('historical')"
-          type="button"
-        >
-          <span class="tab-label">Historical Data</span>
-        </button>
-        <button
-          class="tab"
-          [class.active]="activeTab === 'advanced'"
-          (click)="setActiveTab('advanced')"
-          type="button"
-          *ngIf="selectedDeviceIds.size === 1"
-        >
-          <span class="tab-label">Custom Data</span>
-        </button>
-      </div>
-    </div>
+      <div class="form-section tab-section">
+        <label><span class="step-number-label">3.</span> SELECT SIMULATION TYPE</label>
+
+        <div class="tabs">
+          <button
+            class="tab"
+            [class.active]="activeTab === 'realtime'"
+            (click)="setActiveTab('realtime')"
+            type="button"
+          >
+            <span class="tab-label">Real-Time Simulation</span>
+          </button>
+          <button
+            class="tab"
+            [class.active]="activeTab === 'historical'"
+            (click)="setActiveTab('historical')"
+            type="button"
+          >
+            <span class="tab-label">Historical Data</span>
+          </button>
+          <button
+            class="tab"
+            [class.active]="activeTab === 'advanced'"
+            (click)="setActiveTab('advanced')"
+            type="button"
+            *ngIf="selectedDeviceIds.size === 1"
+          >
+            <span class="tab-label">Custom Data</span>
+          </button>
+        </div>
 
     <!-- ADVANCED TAB CONTENT -->
     <div class="tab-content" *ngIf="activeTab === 'advanced'">
@@ -306,10 +308,11 @@
       <button
         type="button"
         (click)="startSimulation()"
-        [disabled]="isSimulating || generatingHistorical || selectedDeviceIds.size === 0"
+        [disabled]="isSimulating || startingSimulation || generatingHistorical || selectedDeviceIds.size === 0"
         class="start-btn"
       >
-        Start Simulation
+        <span *ngIf="!startingSimulation">Start Simulation</span>
+        <span *ngIf="startingSimulation">Starting...</span>
       </button>
       <button
         type="button"
@@ -319,13 +322,21 @@
       >
         Stop Simulation
       </button>
-      <button type="button" (click)="resetSettings()" class="reset-btn">
-        Reset
-      </button>
+    </div>
+
+    <!-- Starting Simulation Loader -->
+    <div class="simulation-starting" *ngIf="startingSimulation">
+      <div class="status-indicator">
+        <div class="spinner"></div>
+        <span>Starting simulation...</span>
+      </div>
+      <p class="status-details">
+        Please wait while we initialize the simulation for {{selectedDeviceIds.size || devices.length}} device(s)
+      </p>
     </div>
 
     <!-- Simulation Status -->
-    <div class="simulation-status" *ngIf="isSimulating">
+    <div class="simulation-status" *ngIf="isSimulating && !startingSimulation">
       <div class="status-indicator">
         <div class="pulse"></div>
         <span>Simulation Running</span>
@@ -338,6 +349,9 @@
     </div>
 
     </div><!-- End REAL-TIME SIMULATION TAB CONTENT -->
+
+      </div><!-- End form-section tab-section -->
+    </div><!-- End tabs-container -->
 
   </form>
 
