@@ -364,6 +364,7 @@ public class HistoricalDataService {
                 long elapsedMs = System.currentTimeMillis() - startTime;
                 status.setStatus("completed");
                 status.setProgress(100);
+                status.setDaysProcessed((int) totalDays);  // Update day counter to show final total
                 status.setCompletionTime(System.currentTimeMillis());  // Track completion time for cleanup
 
                 logger.info("Historical data generation completed - JobID: {}, Total points: {}, Time: {}ms",
@@ -738,44 +739,61 @@ public class HistoricalDataService {
     }
 
     /**
-     * Send all data points in optimized 500-row batches with throttling
+     * Send all data points in optimized batches with throttling and retry logic
      * This is the key optimization for Supabase free tier performance
      */
     private void sendDataInOptimizedBatches(List<Map<String, Object>> allDataPoints,
                                              HistoricalJobStatus status, int totalDays) {
-        final int BATCH_SIZE = 500;  // Optimal batch size for Supabase free tier
+        final int BATCH_SIZE = 250;  // Reduced from 500 to avoid timeouts on Supabase free tier
         final int THROTTLE_MS = 300;  // 300ms delay between batches to avoid CPU spikes
+        final int MAX_RETRIES = 3;  // Maximum retry attempts per batch
 
         int totalBatches = (int) Math.ceil((double) allDataPoints.size() / BATCH_SIZE);
         int batchesCompleted = 0;
+        int batchesFailed = 0;
+        List<Integer> failedBatchNumbers = new ArrayList<>();
 
-        logger.info("Sending {} data points in {} batches of {}", allDataPoints.size(), totalBatches, BATCH_SIZE);
+        logger.info("Sending {} data points in {} batches of {} (with up to {} retries per batch)",
+                   allDataPoints.size(), totalBatches, BATCH_SIZE, MAX_RETRIES);
 
         for (int i = 0; i < allDataPoints.size(); i += BATCH_SIZE) {
+            int batchNumber = (i / BATCH_SIZE) + 1;
             int endIndex = Math.min(i + BATCH_SIZE, allDataPoints.size());
             List<Map<String, Object>> batch = allDataPoints.subList(i, endIndex);
 
-            // Send this batch
-            sendBatchToSupabase(batch);
+            // Send this batch with retry logic
+            boolean success = sendBatchWithRetry(batch, batchNumber, MAX_RETRIES);
 
-            batchesCompleted++;
+            if (success) {
+                batchesCompleted++;
+            } else {
+                batchesFailed++;
+                failedBatchNumbers.add(batchNumber);
+                logger.error("❌ Batch #{} FAILED after {} retries - {} records NOT inserted",
+                           batchNumber, MAX_RETRIES, batch.size());
+            }
 
             // Update progress (15-85% range for device data sending)
-            int overallProgress = 15 + (int) ((batchesCompleted * 70.0) / totalBatches);
+            // Use total batches processed (successful + failed) to keep progress moving
+            int batchesProcessed = batchesCompleted + batchesFailed;
+            int overallProgress = 15 + (int) ((batchesProcessed * 70.0) / totalBatches);
             status.setProgress(overallProgress);
 
-            // Update days counter proportionally as data is sent
-            int daysProcessed = (int) ((batchesCompleted * (double) totalDays) / totalBatches);
+            // Update days counter to align with OVERALL progress (0-100%), not just this phase
+            // Device data is 15-85% (70% of total), so scale accordingly
+            // Formula: (currentProgress / 100) * totalDays
+            int daysProcessed = (int) ((overallProgress / 100.0) * totalDays);
             status.setDaysProcessed(daysProcessed);
 
             // Log progress every 5 batches
-            if (batchesCompleted % 5 == 0 || batchesCompleted == totalBatches) {
-                logger.info("Sent: {}/{} batches ({} / {} data points)",
-                           batchesCompleted, totalBatches, endIndex, allDataPoints.size());
+            if ((batchesCompleted + batchesFailed) % 5 == 0 || (batchesCompleted + batchesFailed) == totalBatches) {
+                logger.info("Progress: {}/{} batches ({} succeeded, {} failed) - {} / {} data points",
+                           batchesCompleted + batchesFailed, totalBatches, batchesCompleted, batchesFailed,
+                           endIndex, allDataPoints.size());
             }
 
             // Throttle between batches (except for the last one)
-            if (batchesCompleted < totalBatches) {
+            if ((batchesCompleted + batchesFailed) < totalBatches) {
                 try {
                     Thread.sleep(THROTTLE_MS);
                 } catch (InterruptedException e) {
@@ -785,15 +803,76 @@ public class HistoricalDataService {
             }
         }
 
-        logger.info("Successfully sent all {} data points in {} batches", allDataPoints.size(), batchesCompleted);
+        // Report final results
+        if (batchesFailed == 0) {
+            logger.info("✅ Successfully sent all {} data points in {} batches", allDataPoints.size(), batchesCompleted);
+        } else {
+            int recordsFailed = batchesFailed * BATCH_SIZE;
+            logger.error("⚠️  Batch insertion completed with failures:");
+            logger.error("   ✅ Succeeded: {}/{} batches ({} data points)",
+                       batchesCompleted, totalBatches, batchesCompleted * BATCH_SIZE);
+            logger.error("   ❌ Failed: {}/{} batches (~{} data points)",
+                       batchesFailed, totalBatches, recordsFailed);
+            logger.error("   Failed batch numbers: {}", failedBatchNumbers);
+            throw new RuntimeException(String.format(
+                "Failed to insert %d batches (~%d records). Failed batches: %s. " +
+                "This will result in incomplete historical data. Please check Supabase logs and retry.",
+                batchesFailed, recordsFailed, failedBatchNumbers));
+        }
     }
 
     /**
-     * Send a single batch to Supabase REST API (no throttling - caller handles that)
+     * Send a batch with retry logic and exponential backoff
+     * Retries up to maxRetries times with increasing delays between attempts
      */
-    private void sendBatchToSupabase(List<Map<String, Object>> batch) {
+    private boolean sendBatchWithRetry(List<Map<String, Object>> batch, int batchNumber, int maxRetries) {
+        int attempt = 1;
+
+        while (attempt <= maxRetries) {
+            try {
+                boolean success = sendBatchToSupabase(batch);
+
+                if (success) {
+                    if (attempt > 1) {
+                        logger.info("✅ Batch #{} succeeded on attempt {}/{}", batchNumber, attempt, maxRetries);
+                    }
+                    return true;
+                } else {
+                    // Failed, but may retry
+                    if (attempt < maxRetries) {
+                        int delayMs = (int) (1000 * Math.pow(2, attempt - 1));  // Exponential backoff: 1s, 2s, 4s
+                        logger.warn("⚠️  Batch #{} failed on attempt {}/{}. Retrying in {}ms...",
+                                  batchNumber, attempt, maxRetries, delayMs);
+                        Thread.sleep(delayMs);
+                    } else {
+                        logger.error("❌ Batch #{} failed on final attempt {}/{}", batchNumber, attempt, maxRetries);
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.error("Retry interrupted for batch #{}", batchNumber);
+                return false;
+            } catch (Exception e) {
+                logger.error("Unexpected error in batch #{} attempt {}/{}: {}",
+                           batchNumber, attempt, maxRetries, e.getMessage());
+                if (attempt >= maxRetries) {
+                    return false;
+                }
+            }
+
+            attempt++;
+        }
+
+        return false;  // All retries exhausted
+    }
+
+    /**
+     * Send a single batch to Supabase REST API with retry support
+     * Returns true if successful, false otherwise
+     */
+    private boolean sendBatchToSupabase(List<Map<String, Object>> batch) {
         if (batch.isEmpty()) {
-            return;
+            return true;  // Empty batch is considered success
         }
 
         // Validate records
@@ -811,7 +890,7 @@ public class HistoricalDataService {
 
         if (validBatch.isEmpty()) {
             logger.warn("All {} records in batch were invalid, skipping", batch.size());
-            return;
+            return false;  // All invalid records is a failure
         }
 
         try {
@@ -832,11 +911,14 @@ public class HistoricalDataService {
 
             if (response.getStatusCode().is2xxSuccessful()) {
                 logger.debug("✅ Inserted {} records", validBatch.size());
+                return true;
             } else {
-                logger.error("Batch failed: {} - {}", response.getStatusCode(), response.getBody());
+                logger.warn("Batch insert failed with status {}: {}", response.getStatusCode(), response.getBody());
+                return false;
             }
         } catch (Exception e) {
-            logger.error("Error inserting {} records: {}", validBatch.size(), e.getMessage());
+            logger.warn("Error inserting {} records: {}", validBatch.size(), e.getMessage());
+            return false;  // Return false instead of swallowing exception
         }
     }
 
@@ -1344,7 +1426,7 @@ public class HistoricalDataService {
      * Send geofence events to Supabase in batches
      */
     private void sendGeofenceEventsInBatches(List<Map<String, Object>> geofenceEvents, HistoricalJobStatus status) {
-        final int BATCH_SIZE = 500;
+        final int BATCH_SIZE = 250;  // Reduced from 500 to match device data batch size
         final int THROTTLE_MS = 300;
 
         int totalBatches = (int) Math.ceil((double) geofenceEvents.size() / BATCH_SIZE);
