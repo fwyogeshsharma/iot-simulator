@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import javax.annotation.PreDestroy;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -71,6 +73,22 @@ public class HistoricalDataService {
 
     // Random instance for anomaly generation
     private final Random random = new Random();
+
+    /**
+     * Helper method to round double values to specified decimal places
+     * Uses BigDecimal to avoid floating-point precision errors
+     * @param value The value to round
+     * @param decimalPlaces Number of decimal places (default: 1)
+     * @return Precisely rounded double value
+     */
+    private double roundToDecimalPlaces(double value, int decimalPlaces) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return value;
+        }
+        BigDecimal bd = BigDecimal.valueOf(value);
+        bd = bd.setScale(decimalPlaces, RoundingMode.HALF_UP);
+        return bd.doubleValue();
+    }
 
     // Time periods for pattern adjustments
     enum TimePeriod {
@@ -515,8 +533,8 @@ public class HistoricalDataService {
             if ("location".equals(dataType)) {
                 Map<String, Object> location = new LinkedHashMap<>();
                 // Default location (somewhere in US for elderly care)
-                location.put("latitude", 40.7128 + (random.nextDouble() * 0.1 - 0.05));  // NYC area with small variance
-                location.put("longitude", -74.0060 + (random.nextDouble() * 0.1 - 0.05));
+                location.put("latitude", roundToDecimalPlaces(40.7128 + (random.nextDouble() * 0.1 - 0.05), 6));  // NYC area with small variance
+                location.put("longitude", roundToDecimalPlaces(-74.0060 + (random.nextDouble() * 0.1 - 0.05), 6));
                 return location;
             }
 
@@ -566,8 +584,7 @@ public class HistoricalDataService {
                                ((Number) configData.get("precision")).intValue() : 2;
 
                 double value = min + (random.nextDouble() * (max - min));
-                double factor = Math.pow(10, precision);
-                return Math.round(value * factor) / factor;
+                return roundToDecimalPlaces(value, precision);
             } else if ("enum".equals(configType)) {
                 List<Object> values = (List<Object>) configData.get("values");
                 if (values != null && !values.isEmpty()) {
@@ -591,10 +608,10 @@ public class HistoricalDataService {
                 case "heart_rate":
                     double hr = ((Number) baseValue).doubleValue();
                     switch (period) {
-                        case NIGHT: return hr * 0.90;      // -10%
-                        case MORNING: return hr * 1.05;    // +5%
-                        case AFTERNOON: return hr * 1.10;  // +10%
-                        case EVENING: return hr;           // 0%
+                        case NIGHT: return roundToDecimalPlaces(hr * 0.90, 1);      // -10%
+                        case MORNING: return roundToDecimalPlaces(hr * 1.05, 1);    // +5%
+                        case AFTERNOON: return roundToDecimalPlaces(hr * 1.10, 1);  // +10%
+                        case EVENING: return roundToDecimalPlaces(hr, 1);           // 0%
                     }
                     break;
 
@@ -602,10 +619,10 @@ public class HistoricalDataService {
                 case "body_temperature":
                     double temp = ((Number) baseValue).doubleValue();
                     switch (period) {
-                        case NIGHT: return temp - 0.5;     // -0.5°F
-                        case MORNING: return temp + 0.2;   // +0.2°F
-                        case AFTERNOON: return temp + 0.3; // +0.3°F
-                        case EVENING: return temp;         // 0°F
+                        case NIGHT: return roundToDecimalPlaces(temp - 0.5, 1);     // -0.5°F
+                        case MORNING: return roundToDecimalPlaces(temp + 0.2, 1);   // +0.2°F
+                        case AFTERNOON: return roundToDecimalPlaces(temp + 0.3, 1); // +0.3°F
+                        case EVENING: return roundToDecimalPlaces(temp, 1);         // 0°F
                     }
                     break;
 
@@ -651,12 +668,12 @@ public class HistoricalDataService {
                 case "activity_level":
                     // 20% less activity on weekends
                     double activityValue = ((Number) value).doubleValue();
-                    return activityValue * 0.80;
+                    return roundToDecimalPlaces(activityValue * 0.80, 1);
 
                 case "sleep_duration":
                     // Sleep 30 minutes more on weekends
                     double sleepValue = ((Number) value).doubleValue();
-                    return sleepValue + 0.5;
+                    return roundToDecimalPlaces(sleepValue + 0.5, 1);
             }
         } catch (Exception e) {
             logger.error("Error applying weekly pattern: {}", e.getMessage());
@@ -699,7 +716,7 @@ public class HistoricalDataService {
 
                 case FEVER:
                     // Temperature > 102°F (instead of normal ~98.6°F)
-                    return 102.0 + (random.nextDouble() * 2.0);  // 102-104°F
+                    return roundToDecimalPlaces(102.0 + (random.nextDouble() * 2.0), 1);  // 102-104°F
 
                 case HIGH_BP:
                     // Systolic > 160, Diastolic > 100
@@ -1510,8 +1527,8 @@ public class HistoricalDataService {
 
             // Home - Neo Clinic area, Jaipur (realistic residential area)
             String homeId = UUID.randomUUID().toString();
-            double homeLat = 26.88284340 + (random.nextDouble() * 0.01 - 0.005);
-            double homeLon = 75.75532680 + (random.nextDouble() * 0.01 - 0.005);
+            double homeLat = roundToDecimalPlaces(26.88284340 + (random.nextDouble() * 0.01 - 0.005), 6);
+            double homeLon = roundToDecimalPlaces(75.75532680 + (random.nextDouble() * 0.01 - 0.005), 6);
 
             Map<String, Object> homeMap = new LinkedHashMap<>();
             homeMap.put("id", homeId);
@@ -1542,8 +1559,8 @@ public class HistoricalDataService {
 
             // Work - Metropolis area, Jaipur (realistic commercial area, ~6.5 km from home)
             String workId = UUID.randomUUID().toString();
-            double workLat = 26.84029530 + (random.nextDouble() * 0.01 - 0.005);
-            double workLon = 75.81860370 + (random.nextDouble() * 0.01 - 0.005);
+            double workLat = roundToDecimalPlaces(26.84029530 + (random.nextDouble() * 0.01 - 0.005), 6);
+            double workLon = roundToDecimalPlaces(75.81860370 + (random.nextDouble() * 0.01 - 0.005), 6);
 
             Map<String, Object> workMap = new LinkedHashMap<>();
             workMap.put("id", workId);
@@ -1723,9 +1740,9 @@ public class HistoricalDataService {
 
         // Store as JSON object with lat/lon
         Map<String, Object> position = new LinkedHashMap<>();
-        position.put("latitude", coords[0]);
-        position.put("longitude", coords[1]);
-        position.put("accuracy", 5 + random.nextDouble() * 20); // 5-25 meters
+        position.put("latitude", roundToDecimalPlaces(coords[0], 6));
+        position.put("longitude", roundToDecimalPlaces(coords[1], 6));
+        position.put("accuracy", roundToDecimalPlaces(5 + random.nextDouble() * 20, 1)); // 5-25 meters
         try {
             gpsData.put("value", objectMapper.writeValueAsString(position));
         } catch (Exception e) {
@@ -1759,9 +1776,9 @@ public class HistoricalDataService {
         gpsData.put("data_type", "position");
 
         Map<String, Object> position = new LinkedHashMap<>();
-        position.put("latitude", coords[0]);
-        position.put("longitude", coords[1]);
-        position.put("accuracy", 10 + random.nextDouble() * 30); // 10-40 meters (less accurate during movement)
+        position.put("latitude", roundToDecimalPlaces(coords[0], 6));
+        position.put("longitude", roundToDecimalPlaces(coords[1], 6));
+        position.put("accuracy", roundToDecimalPlaces(10 + random.nextDouble() * 30, 1)); // 10-40 meters (less accurate during movement)
         try {
             gpsData.put("value", objectMapper.writeValueAsString(position));
         } catch (Exception e) {
