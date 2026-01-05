@@ -464,9 +464,15 @@ public class HistoricalDataService {
                                                        boolean includeAnomalies, String frequency) {
         List<Map<String, Object>> dataPoints = new ArrayList<>();
 
-        // Always generate 1 reading per day at 2pm (to stay within free tier)
+        // Generate 1 reading per day (to stay within free tier)
         // Frequency controls which DAYS get data, not readings per day
-        int[] hoursToGenerate = {14};  // 2pm only
+        // Use 2am for sleep data, 2pm for other data
+        int[] hoursToGenerate;
+        if ("sleep_stage".equals(config.getDataType()) || "sleep_quality".equals(config.getDataType())) {
+            hoursToGenerate = new int[]{2};  // 2am for sleep data (NIGHT period)
+        } else {
+            hoursToGenerate = new int[]{14};  // 2pm for other data
+        }
 
         for (int hour : hoursToGenerate) {
             LocalTime time = LocalTime.of(hour, 0);
@@ -1635,6 +1641,11 @@ public class HistoricalDataService {
         int dayCounter = 0;
 
         while (!currentDate.isAfter(endDate)) {
+            // Skip future dates
+            if (currentDate.isAfter(LocalDate.now())) {
+                break;
+            }
+
             // Skip days based on frequency
             if (dayCounter % daySkipInterval != 0) {
                 currentDate = currentDate.plusDays(1);
@@ -1647,6 +1658,13 @@ public class HistoricalDataService {
             // Generate daily movement pattern
             // Morning: At home (6:00 AM)
             LocalDateTime morningTime = currentDate.atTime(6, 0);
+
+            // Skip if this timestamp is in the future
+            if (morningTime.isAfter(LocalDateTime.now())) {
+                currentDate = currentDate.plusDays(1);
+                continue;
+            }
+
             if (currentPlace != home || currentGeofenceId == null) {
                 // Generate entry event for home
                 allDataPoints.addAll(createGeofenceEvent(device, home, "entry", morningTime));
