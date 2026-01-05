@@ -312,6 +312,119 @@ public class SimulationManager {
         }
 
 
+        // For devices with company and model, combine all data points into a single JSON value
+        // This ensures real device JSON structure is preserved (e.g., bed pad sending {pressure: X, occupancy: Y})
+        if (targetDevice.getCompanyId() != null && !targetDevice.getCompanyId().trim().isEmpty()
+            && targetDevice.getModelId() != null && !targetDevice.getModelId().trim().isEmpty()) {
+
+            // Combine all data points into a single value object
+            Map<String, Object> combinedValue = new LinkedHashMap<>();
+            String primaryDataType = null;
+            String primaryUnit = null;
+
+            for (Map<String, Object> dataPoint : dataPoints) {
+                String dataType = (String) dataPoint.get("data_type");
+                Object value = dataPoint.get("value");
+                combinedValue.put(dataType, value);
+
+                // Use the first data type as the primary data_type for the database
+                if (primaryDataType == null) {
+                    primaryDataType = dataType;
+                    if (dataPoint.containsKey("unit")) {
+                        primaryUnit = (String) dataPoint.get("unit");
+                    }
+                }
+            }
+
+            try {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("device_id", targetDevice.getDeviceId());
+                // Use the first/primary sensor type as data_type (e.g., "pressure" for bed pad)
+                // This passes the database constraint while the value contains all sensor data
+                payload.put("data_type", primaryDataType);
+                payload.put("value", combinedValue);
+
+                // Include unit from primary data type if available
+                if (primaryUnit != null && !primaryUnit.trim().isEmpty()) {
+                    payload.put("unit", primaryUnit);
+                }
+
+                // Include location if available
+                if (targetDevice.getLocation() != null && !targetDevice.getLocation().trim().isEmpty()) {
+                    payload.put("location", targetDevice.getLocation());
+                }
+
+                // Send to device-ingest endpoint
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("Authorization", "Bearer " + targetDevice.getApiKey());
+                headers.set("Content-Type", "application/json");
+
+                String payloadJson = objectMapper.writeValueAsString(payload);
+                HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+
+                ResponseEntity<String> response = restTemplate.postForEntity(deviceIngestUrl, request, String.class);
+
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    logger.info("   ✓ Combined sensor data sent: {}", combinedValue);
+
+                    long totalTime = System.currentTimeMillis() - startTime;
+
+                    // Create a dataPoint representation for the combined data
+                    Map<String, Object> combinedDataPoint = new LinkedHashMap<>();
+                    combinedDataPoint.put("data_type", primaryDataType);
+                    combinedDataPoint.put("value", combinedValue);
+                    if (primaryUnit != null) {
+                        combinedDataPoint.put("unit", primaryUnit);
+                    }
+
+                    List<Map<String, Object>> sentDataPoints = new ArrayList<>();
+                    sentDataPoints.add(combinedDataPoint);
+
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("success", true);
+                    result.put("message", String.format("Generated %d data points in single row", dataPoints.size()));
+                    result.put("deviceId", targetDevice.getDeviceId());
+                    result.put("modelName", targetDevice.getModelName());
+                    result.put("companyName", targetDevice.getCompanyName());
+                    result.put("totalDataPoints", dataPoints.size());
+                    result.put("successCount", 1);
+                    result.put("failCount", 0);
+                    result.put("dataPoints", sentDataPoints);
+                    result.put("elapsedMs", totalTime);
+
+                    logger.info("✅ SUCCESS - Combined {} data points in single row ({}ms)", dataPoints.size(), totalTime);
+                    logger.info("═══════════════════════════════════════════════════════════════════");
+                    return result;
+                } else {
+                    logger.warn("⚠️  FAILED - Status: {}", response.getStatusCode());
+
+                    long totalTime = System.currentTimeMillis() - startTime;
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("success", false);
+                    result.put("message", "Failed to send combined data - Status: " + response.getStatusCode());
+                    result.put("error", response.getBody());
+                    result.put("elapsedMs", totalTime);
+
+                    logger.info("═══════════════════════════════════════════════════════════════════");
+                    return result;
+                }
+
+            } catch (Exception e) {
+                logger.error("❌ ERROR sending combined data: {}", e.getMessage());
+
+                long totalTime = System.currentTimeMillis() - startTime;
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("success", false);
+                result.put("message", "Error sending combined data");
+                result.put("error", e.getMessage());
+                result.put("elapsedMs", totalTime);
+
+                logger.info("═══════════════════════════════════════════════════════════════════");
+                return result;
+            }
+        }
+
+        // For devices WITHOUT company/model, send individual data points as before
         int successCount = 0;
         int failCount = 0;
         List<Map<String, Object>> sentDataPoints = new ArrayList<>();
@@ -389,6 +502,89 @@ public class SimulationManager {
 
 
     /**
+     * Check if a data type config specifies combined sensor data
+     * A combined config has type="combined" with multiple fields
+     */
+    private boolean isCombinedSensorConfig(DataTypeConfig config) {
+        if (config == null || config.getConfig() == null) {
+            logger.debug("isCombinedSensorConfig: config or config map is null");
+            return false;
+        }
+
+        Map<String, Object> configMap = config.getConfig();
+        Object typeValue = configMap.get("type");
+        boolean isCombined = "combined".equals(typeValue);
+        logger.debug("isCombinedSensorConfig: type='{}', isCombined={}", typeValue, isCombined);
+        return isCombined;
+    }
+
+    /**
+     * Generate combined sensor values from a config with type="combined"
+     * Returns a map with all field values
+     */
+    private Map<String, Object> generateCombinedValues(DataTypeConfig config) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Object> configMap = config.getConfig();
+
+        // Get the fields map
+        Object fieldsObj = configMap.get("fields");
+        if (!(fieldsObj instanceof Map)) {
+            return result;
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> fields = (Map<String, Object>) fieldsObj;
+
+        // Generate value for each field
+        for (Map.Entry<String, Object> entry : fields.entrySet()) {
+            String fieldName = entry.getKey();
+            Object fieldConfigObj = entry.getValue();
+
+            if (!(fieldConfigObj instanceof Map)) {
+                continue;
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> fieldConfig = (Map<String, Object>) fieldConfigObj;
+
+            Object fieldValue = generateValueFromFieldConfig(fieldConfig);
+            result.put(fieldName, fieldValue);
+        }
+
+        return result;
+    }
+
+    /**
+     * Generate a single value from a field config
+     */
+    private Object generateValueFromFieldConfig(Map<String, Object> fieldConfig) {
+        String type = (String) fieldConfig.get("type");
+
+        if ("random_number".equals(type)) {
+            double min = ((Number) fieldConfig.getOrDefault("min", 0)).doubleValue();
+            double max = ((Number) fieldConfig.getOrDefault("max", 100)).doubleValue();
+            int precision = ((Number) fieldConfig.getOrDefault("precision", 0)).intValue();
+
+            double value = min + (Math.random() * (max - min));
+
+            if (precision > 0) {
+                double factor = Math.pow(10, precision);
+                value = Math.round(value * factor) / factor;
+            } else {
+                value = Math.round(value);
+            }
+
+            return value;
+        } else if ("boolean".equals(type)) {
+            double probability = ((Number) fieldConfig.getOrDefault("probability", 0.5)).doubleValue();
+            return Math.random() < probability;
+        } else {
+            // Default to string or return as-is
+            return fieldConfig.getOrDefault("default", null);
+        }
+    }
+
+    /**
      * Generate and send data for a single sensor/device
      */
 
@@ -434,6 +630,8 @@ public class SimulationManager {
 
 
         logger.info("🔧 Sensor: {} ({})", targetConfig.getDisplayName(), dataType);
+        logger.debug("   Config type: {}", targetConfig.getConfigType());
+        logger.debug("   Config map: {}", targetConfig.getConfig());
 
         String unit = targetConfig.getUnit();
         if (unit != null && unit.trim().isEmpty()) {
@@ -817,6 +1015,11 @@ public class SimulationManager {
      * Generate a value based on data type configuration
      */
     private Object generateValue(DataTypeConfig config) {
+        // Check if this is a combined sensor config
+        if (isCombinedSensorConfig(config)) {
+            return generateCombinedValues(config);
+        }
+
         if ("enum".equals(config.getConfigType())) {
             List<?> values = (List<?>) config.getConfig().get("values");
             if (values != null && !values.isEmpty()) {
@@ -985,21 +1188,33 @@ public class SimulationManager {
                     }
 
 
-                    // For each data type config, schedule generation
-                    logger.info("   └─ {} has {} sensors", device.getDeviceName(), configs.size());
-                    for (DataTypeConfig config : configs) {
-                        // Initialize LocationGenerator for GPS/location devices
-                        if (("gps".equals(config.getDataType()) || "location".equals(config.getDataType()))) {
-                            String generatorKey = device.getId() + "_" + config.getDataType();
-                            if (!geofencePlaces.isEmpty()) {
-                                locationGenerators.put(generatorKey, new LocationGenerator(geofencePlaces));
+                    // Check if device has company and model (real device model)
+                    boolean hasModel = device.getCompanyId() != null && !device.getCompanyId().trim().isEmpty()
+                        && device.getModelId() != null && !device.getModelId().trim().isEmpty();
+
+                    if (hasModel) {
+                        // For devices with models, schedule ONE combined data generation task
+                        logger.info("   └─ {} (Model: {}) - scheduling combined data generation for {} sensors",
+                            device.getDeviceName(), device.getModelName(), configs.size());
+                        scheduleModelBasedDataGeneration(device);
+                        totalScheduled++;
+                    } else {
+                        // For devices without models, schedule individual tasks for each sensor
+                        logger.info("   └─ {} has {} sensors", device.getDeviceName(), configs.size());
+                        for (DataTypeConfig config : configs) {
+                            // Initialize LocationGenerator for GPS/location devices
+                            if (("gps".equals(config.getDataType()) || "location".equals(config.getDataType()))) {
+                                String generatorKey = device.getId() + "_" + config.getDataType();
+                                if (!geofencePlaces.isEmpty()) {
+                                    locationGenerators.put(generatorKey, new LocationGenerator(geofencePlaces));
+                                }
+
                             }
 
+
+                            scheduleDataGeneration(device, config);
+                            totalScheduled++;
                         }
-
-
-                        scheduleDataGeneration(device, config);
-                        totalScheduled++;
                     }
 
                 } catch (Exception e) {
@@ -1011,6 +1226,52 @@ public class SimulationManager {
             logger.info("📊 Scheduled {} data type generators across {} devices", totalScheduled, devices.size());
         }
 
+
+        /**
+         * Schedule combined data generation for devices with company and model
+         * This sends all sensor data in a single API call with combined JSON value
+         */
+        private void scheduleModelBasedDataGeneration(com.example.iotsimulatorbackend.model.Device device) {
+            try {
+                // Get all data type configs to determine the frequency
+                List<DataTypeConfig> configs = simulatorService.getDataTypesByDeviceId(device.getId());
+
+                // Use the highest frequency (most frequent update) as the interval
+                int maxFrequency = configs.stream()
+                    .mapToInt(DataTypeConfig::getFrequencyPerDay)
+                    .max()
+                    .orElse(24); // Default to once per hour if no frequency found
+
+                long intervalSeconds = (24 * 60 * 60) / maxFrequency;
+
+                // Format interval nicely for display
+                String intervalDisplay;
+                if (intervalSeconds < 60) {
+                    intervalDisplay = intervalSeconds + "s";
+                } else if (intervalSeconds < 3600) {
+                    intervalDisplay = (intervalSeconds / 60) + "m";
+                } else {
+                    intervalDisplay = (intervalSeconds / 3600) + "h";
+                }
+
+                logger.info("      → Interval: {} (based on highest frequency: {}/day)", intervalDisplay, maxFrequency);
+
+                // Create a task key for tracking
+                String taskKey = device.getId() + "_model_based";
+
+                // Schedule the task to run at fixed rate
+                ScheduledFuture<?> future = scheduler.scheduleAtFixedRate(() -> {
+                    if (isRunning) {
+                        generateAndSendModelBasedData(device);
+                    }
+                }, 0, intervalSeconds, java.util.concurrent.TimeUnit.SECONDS);
+
+                scheduledTasks.put(taskKey, future);
+            } catch (Exception e) {
+                logger.error("❌ Error scheduling model-based data generation for device {}: {}",
+                    device.getDeviceId(), e.getMessage());
+            }
+        }
 
         private void scheduleDataGeneration(com.example.iotsimulatorbackend.model.Device device, DataTypeConfig config) {
             // Calculate interval based on frequencyPerDay from device_types table
@@ -1047,6 +1308,87 @@ public class SimulationManager {
             scheduledTasks.put(taskKey, future);
         }
 
+
+        /**
+         * Generate and send combined sensor data for devices with company and model
+         * Sends all sensor values in a single API call with combined JSON
+         */
+        private void generateAndSendModelBasedData(com.example.iotsimulatorbackend.model.Device device) {
+            // Declare variables outside try block for error handling
+            String primaryDataType = null;
+            String primaryUnit = null;
+
+            try {
+                // Get all data type configs for this device
+                List<DataTypeConfig> configs = simulatorService.getDataTypesByDeviceId(device.getId());
+
+                // Generate combined value object with all sensor data
+                Map<String, Object> combinedValue = new LinkedHashMap<>();
+
+                for (DataTypeConfig config : configs) {
+                    Object generatedValue = generateValue(config);
+                    combinedValue.put(config.getDataType(), generatedValue);
+
+                    // Use the first data type as the primary data_type for the database
+                    if (primaryDataType == null) {
+                        primaryDataType = config.getDataType();
+                        if (config.getUnit() != null && !config.getUnit().trim().isEmpty()) {
+                            primaryUnit = config.getUnit();
+                        }
+                    }
+                }
+
+                // Create payload with combined sensor data
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("device_id", device.getDeviceId());
+                // Use the first/primary sensor type as data_type (e.g., "pressure" for bed pad)
+                // This passes the database constraint while the value contains all sensor data
+                payload.put("data_type", primaryDataType);
+                payload.put("value", combinedValue);
+
+                // Include unit from primary data type if available
+                if (primaryUnit != null && !primaryUnit.trim().isEmpty()) {
+                    payload.put("unit", primaryUnit);
+                }
+
+                // Include location if available
+                if (device.getLocation() != null && !device.getLocation().trim().isEmpty()) {
+                    payload.put("location", device.getLocation());
+                }
+
+                // Send to device-ingest endpoint
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("Authorization", "Bearer " + device.getApiKey());
+                headers.set("Content-Type", "application/json");
+
+                String payloadJson = objectMapper.writeValueAsString(payload);
+                logger.debug("📤 Sending combined model data: {}", payloadJson);
+
+                HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+
+                ResponseEntity<String> response = restTemplate.postForEntity(
+                    deviceIngestUrl, request, String.class);
+
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    // Record success in statistics
+                    statistics.recordSuccess(device.getId(), device.getDeviceName(),
+                        primaryDataType, device.getModelName() + " Combined Data");
+                    logger.debug("✓ {} [{}] combined data sent: {}",
+                        device.getDeviceName(), device.getModelName(), combinedValue);
+                } else {
+                    statistics.recordFailure(device.getId(), device.getDeviceName(),
+                        primaryDataType, device.getModelName() + " Combined Data");
+                    logger.warn("⚠️  Combined data send failed for {} - Status: {}",
+                        device.getDeviceId(), response.getStatusCode());
+                }
+
+            } catch (Exception e) {
+                statistics.recordFailure(device.getId(), device.getDeviceName(),
+                    primaryDataType != null ? primaryDataType : "unknown", device.getModelName() + " Combined Data");
+                logger.warn("❌ Error generating/sending combined data for device {} ({}): {}",
+                    device.getDeviceName(), device.getDeviceId(), e.getMessage());
+            }
+        }
 
         private void generateAndSendData(com.example.iotsimulatorbackend.model.Device device, DataTypeConfig config) {
             try {
@@ -1141,6 +1483,11 @@ public class SimulationManager {
 
 
         private Object generateValue(DataTypeConfig config) {
+            // Check if this is a combined sensor config
+            if (isCombinedSensorConfig(config)) {
+                return generateCombinedValues(config);
+            }
+
             if ("enum".equals(config.getConfigType())) {
                 // Return random enum value
                 List<?> values = (List<?>) config.getConfig().get("values");

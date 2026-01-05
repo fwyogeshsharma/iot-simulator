@@ -258,8 +258,30 @@ public class SimulatorService {
                         parsedSample = sampleConfig;
                     }
 
-                    // Determine if it's range or enum based on sample_data_config content
-                    if (parsedSample.has("type")) {
+                    // Check if this is a multi-field config (like model specifications)
+                    // A multi-field config has multiple top-level keys, each with its own config
+                    boolean isMultiField = false;
+                    if (!parsedSample.has("type") && parsedSample.size() > 0) {
+                        // Check if all fields have nested config objects
+                        boolean allFieldsHaveConfig = true;
+                        Iterator<String> fieldNames = parsedSample.fieldNames();
+                        while (fieldNames.hasNext()) {
+                            String fieldName = fieldNames.next();
+                            JsonNode fieldValue = parsedSample.get(fieldName);
+                            if (!fieldValue.isObject()) {
+                                allFieldsHaveConfig = false;
+                                break;
+                            }
+                        }
+                        isMultiField = allFieldsHaveConfig && parsedSample.size() > 0;
+                    }
+
+                    if (isMultiField) {
+                        // Multi-field configuration (like model specifications)
+                        configType = "combined";
+                        config.put("type", "combined");
+                        config.put("fields", objectMapper.convertValue(parsedSample, Map.class));
+                    } else if (parsedSample.has("type")) {
                         String type = parsedSample.get("type").asText();
                         if ("enum".equals(type)) {
                             configType = "enum";
