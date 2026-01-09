@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <defs>
+    <linearGradient id="heartbeatGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2563EB;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563EB;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="textGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2563EB;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563EB;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background Circle -->
+  <circle cx="150" cy="150" r="120" fill="none" stroke="url(#heartbeatGradient)" stroke-width="4" opacity="0.3"/>
+  <circle cx="150" cy="150" r="100" fill="none" stroke="url(#heartbeatGradient)" stroke-width="3" opacity="0.5"/>
+
+  <!-- Heartbeat/ECG Wave -->
+  <g filter="url(#glow)">
+    <polyline points="20,150 60,150 70,130 80,170 90,100 100,200 110,150 250,150"
+              fill="none"
+              stroke="url(#heartbeatGradient)"
+              stroke-width="6"
+              stroke-linecap="round"
+              stroke-linejoin="round"/>
+
+
+    <!-- Small pulse dots -->
+    <circle cx="70" cy="130" r="4" fill="#3B82F6">
+      <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="90" cy="100" r="4" fill="#2563EB">
+      <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+</svg>
