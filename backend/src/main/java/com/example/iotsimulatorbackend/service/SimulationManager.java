@@ -1,6 +1,7 @@
 package com.example.iotsimulatorbackend.service;
 
 import com.example.iotsimulatorbackend.model.DataTypeConfig;
+import com.example.iotsimulatorbackend.model.FloorPlan;
 import com.example.iotsimulatorbackend.model.GeofencePlace;
 import com.example.iotsimulatorbackend.model.SimulationStatistics;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -274,6 +275,11 @@ public class SimulationManager {
                 List<DataTypeConfig> configs = simulatorService.getDataTypesByDeviceId(deviceId);
 
                 for (String dataType : supportedDataTypes) {
+                    // Skip position data type - it's tracked separately via geofence/GPS
+                    if ("position".equals(dataType)) {
+                        continue;
+                    }
+
                     // Find matching config for this data type
                     DataTypeConfig matchingConfig = null;
                     for (DataTypeConfig config : configs) {
@@ -1145,6 +1151,7 @@ public class SimulationManager {
         private final SimulationStatistics statistics;
         private final Map<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
         private final Map<String, LocationGenerator> locationGenerators;
+        private final Map<String, IndoorPositionGenerator> indoorPositionGenerators = new ConcurrentHashMap<>();
         private volatile boolean isRunning = false;
         private List<GeofencePlace> geofencePlaces = new ArrayList<>();
 
@@ -1202,13 +1209,19 @@ public class SimulationManager {
                         // For devices without models, schedule individual tasks for each sensor
                         logger.info("   └─ {} has {} sensors", device.getDeviceName(), configs.size());
                         for (DataTypeConfig config : configs) {
-                            // Initialize LocationGenerator for GPS/location devices
-                            if (("gps".equals(config.getDataType()) || "location".equals(config.getDataType()))) {
+                            // Initialize IndoorPositionGenerator for position data (indoor tracking)
+                            if ("position".equals(config.getDataType())) {
+                                String generatorKey = device.getId() + "_position";
+                                FloorPlan floorPlan = FloorPlan.getDefaultFloorPlan(device.getElderlyPersonId());
+                                indoorPositionGenerators.put(generatorKey, new IndoorPositionGenerator(floorPlan));
+                                logger.info("      → Initialized indoor position generator for {} in {}", device.getDeviceName(), floorPlan.getName());
+                            }
+                            // Initialize LocationGenerator for GPS/location devices (outdoor tracking)
+                            else if (("gps".equals(config.getDataType()) || "location".equals(config.getDataType()))) {
                                 String generatorKey = device.getId() + "_" + config.getDataType();
                                 if (!geofencePlaces.isEmpty()) {
                                     locationGenerators.put(generatorKey, new LocationGenerator(geofencePlaces));
                                 }
-
                             }
 
 
@@ -1278,7 +1291,16 @@ public class SimulationManager {
             // frequencyPerDay represents how many times per day this data should be generated
             // Formula: interval_seconds = (24 hours * 60 minutes * 60 seconds) / frequencyPerDay
 
-            int frequencyPerDay = config.getFrequencyPerDay(); // Dynamically from device_types.data_frequency_per_day
+            int frequencyPerDay;
+
+            // Special handling for position data - generate every 30 seconds for smooth Movement Playback
+            if ("position".equals(config.getDataType())) {
+                frequencyPerDay = 2880; // 24 * 60 / 0.5 = every 30 seconds
+                logger.info("      → Position tracking: High frequency mode (every 30 seconds for smooth Movement Playback)");
+            } else {
+                frequencyPerDay = config.getFrequencyPerDay(); // Use normal frequency from config
+            }
+
             long intervalSeconds = (24 * 60 * 60) / frequencyPerDay; // 24 hours / frequency
 
             // Format interval nicely for display
@@ -1326,6 +1348,11 @@ public class SimulationManager {
                 Map<String, Object> combinedValue = new LinkedHashMap<>();
 
                 for (DataTypeConfig config : configs) {
+                    // Skip position data type - it's tracked separately via geofence/GPS
+                    if ("position".equals(config.getDataType())) {
+                        continue;
+                    }
+
                     Object generatedValue = generateValue(config);
                     combinedValue.put(config.getDataType(), generatedValue);
 
@@ -1392,25 +1419,38 @@ public class SimulationManager {
 
         private void generateAndSendData(com.example.iotsimulatorbackend.model.Device device, DataTypeConfig config) {
             try {
-                // Generate value - use LocationGenerator for GPS/location data
+                // Generate value - use IndoorPositionGenerator for position data
                 Object generatedValue;
-                if ("gps".equals(config.getDataType()) || "location".equals(config.getDataType())) {
-                    String generatorKey = device.getId() + "_" + config.getDataType();
-                    LocationGenerator generator = locationGenerators.get(generatorKey);
-                    if (generator != null) {
-                        com.example.iotsimulatorbackend.model.LocationData locationData = generator.generateNextLocation();
-                        generatedValue = locationData.toMap();
+                if ("position".equals(config.getDataType())) {
+                    // Use indoor floor plan coordinates instead of GPS
+                    String generatorKey = device.getId() + "_position";
+                    IndoorPositionGenerator positionGenerator = indoorPositionGenerators.get(generatorKey);
+                    if (positionGenerator != null) {
+                        IndoorPositionGenerator.IndoorPosition position = positionGenerator.generateNextPosition(30); // 30 seconds interval for smooth playback
 
-                        // Log movement info
-                        if (generator.getCurrentPlace() != null) {
-                            logger.debug("📍 {} at {} ({}) - Lat: {}, Lon: {}",
-                                    device.getDeviceId(),
-                                    generator.getCurrentPlace().getName(),
-                                    generator.getCurrentPlace().getPlaceType(),
-                                    String.format("%.6f", generator.getCurrentLat()),
-                                    String.format("%.6f", generator.getCurrentLon()));
+                        // Create value map with x, y, zone, accuracy, speed, and zone transition times
+                        Map<String, Object> positionMap = new LinkedHashMap<>();
+                        positionMap.put("x", Math.round(position.getX() * 100.0) / 100.0);
+                        positionMap.put("y", Math.round(position.getY() * 100.0) / 100.0);
+                        positionMap.put("zone", position.getZone());
+                        positionMap.put("accuracy", Math.round(position.getAccuracy() * 100.0) / 100.0);
+                        positionMap.put("speed", Math.round(position.getSpeed() * 100.0) / 100.0);
+
+                        // Add zone transition timestamps (ISO 8601 format)
+                        positionMap.put("zone_entry_time", java.time.Instant.ofEpochMilli(position.getZoneEntryTime()).toString());
+                        if (position.getPreviousZoneExitTime() != null) {
+                            positionMap.put("previous_zone_exit_time", java.time.Instant.ofEpochMilli(position.getPreviousZoneExitTime()).toString());
                         }
 
+                        generatedValue = positionMap;
+
+                        // Log movement info
+                        logger.debug("📍 {} in {} - x: {}, y: {}, speed: {}m/s",
+                                    device.getDeviceId(),
+                                    position.getZone(),
+                                    String.format("%.2f", position.getX()),
+                                    String.format("%.2f", position.getY()),
+                                    String.format("%.2f", position.getSpeed()));
                     } else {
                         // Fallback if no generator
                         generatedValue = generateValue(config);
@@ -1429,7 +1469,8 @@ public class SimulationManager {
                 payload.put("value", generatedValue);
 
                 // Only include unit if it's not empty (some data types like sleep_stage have no unit)
-                String unit = config.getUnit();
+                // Position data type always uses "meters" as unit
+                String unit = "position".equals(config.getDataType()) ? "meters" : config.getUnit();
                 if (unit != null && !unit.isEmpty() && !unit.trim().isEmpty()) {
                     payload.put("unit", unit);
                 }
@@ -1459,7 +1500,7 @@ public class SimulationManager {
                     // Record success in statistics
                     statistics.recordSuccess(device.getId(), device.getDeviceName(),
                                            config.getDataType(), config.getDisplayName());
-                    if (!("gps".equals(config.getDataType()) || "location".equals(config.getDataType()))) {
+                    if (!("gps".equals(config.getDataType()) || "location".equals(config.getDataType()) || "position".equals(config.getDataType()))) {
                         logger.debug("✓ {} [{}] = {} {} (device: {})",
                                 config.getDisplayName(), config.getDataType(),
                                 generatedValue, config.getUnit(), device.getDeviceId());

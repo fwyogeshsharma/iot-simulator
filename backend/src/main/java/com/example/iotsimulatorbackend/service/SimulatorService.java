@@ -94,19 +94,24 @@ public class SimulatorService {
             JsonNode jsonArray = objectMapper.readTree(devicesResponse.getBody());
 
             // Fetch device types for description mapping
-            String allDeviceTypesUrl = deviceTypesUrl + "?select=code,name,description";
+            String allDeviceTypesUrl = deviceTypesUrl + "?select=code,name,description,supports_position_tracking";
             ResponseEntity<String> deviceTypesResponse = restTemplate.exchange(allDeviceTypesUrl, HttpMethod.GET, entity, String.class);
             JsonNode deviceTypesArray = objectMapper.readTree(deviceTypesResponse.getBody());
 
             Map<String, String> deviceTypeDescriptions = new HashMap<>();
+            Map<String, Boolean> deviceTypeSupportsPosition = new HashMap<>();
             for (JsonNode typeNode : deviceTypesArray) {
                 String code = typeNode.get("code").asText();
                 String description = typeNode.has("description") && !typeNode.get("description").isNull()
                     ? typeNode.get("description").asText()
                     : "";
                 deviceTypeDescriptions.put(code, description);
-            }
+                Boolean supportsPosition = typeNode.has("supports_position_tracking") && !typeNode.get("supports_position_tracking").isNull()
+                    ? typeNode.get("supports_position_tracking").asBoolean()
+                    : false;
+                deviceTypeSupportsPosition.put(code, supportsPosition);
 
+            }
             // Fetch company and model data for enrichment
             Map<String, String> companyNames = new HashMap<>();
             Map<String, String> modelNames = new HashMap<>();
@@ -173,6 +178,8 @@ public class SimulatorService {
                     device.setModelName(modelNames.getOrDefault(modelId, ""));
                     device.setModelSpecifications(modelSpecifications.getOrDefault(modelId, null));
                 }
+                // Set supports_position_tracking from device type
+                device.setSupportsPositionTracking(deviceTypeSupportsPosition.getOrDefault(deviceTypeCode, false));
 
                 devices.add(device);
             }

@@ -18,6 +18,7 @@ public class Device {
     private String modelName;
     private Map<String, Object> modelSpecifications;
     private List<String> supportedDataTypes;
+    private Boolean supportsPositionTracking;
 
     // Constructors, getters, setters
     public Device() {}
@@ -67,5 +68,7 @@ public class Device {
     public Map<String, Object> getModelSpecifications() { return modelSpecifications; }
     public void setModelSpecifications(Map<String, Object> modelSpecifications) { this.modelSpecifications = modelSpecifications; }
     public List<String> getSupportedDataTypes() { return supportedDataTypes; }
+    public Boolean getSupportsPositionTracking() { return supportsPositionTracking; }
+    public void setSupportsPositionTracking(Boolean supportsPositionTracking) { this.supportsPositionTracking = supportsPositionTracking; }
     public void setSupportedDataTypes(List<String> supportedDataTypes) { this.supportedDataTypes = supportedDataTypes; }
 }

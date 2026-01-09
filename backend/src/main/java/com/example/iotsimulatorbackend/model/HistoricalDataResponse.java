@@ -10,6 +10,7 @@ public class HistoricalDataResponse {
     private int daysProcessed;
     private long elapsedMs;
     private Map<String, Integer> deviceDataCounts;  // device_id -> count
+    private java.util.List<String> skippedDevices;  // List of skipped device names
 
     // Constructors
     public HistoricalDataResponse() {
@@ -87,6 +88,14 @@ public class HistoricalDataResponse {
 
     public void setDeviceDataCounts(Map<String, Integer> deviceDataCounts) {
         this.deviceDataCounts = deviceDataCounts;
+    }
+
+    public java.util.List<String> getSkippedDevices() {
+        return skippedDevices;
+    }
+
+    public void setSkippedDevices(java.util.List<String> skippedDevices) {
+        this.skippedDevices = skippedDevices;
     }
 
     @Override

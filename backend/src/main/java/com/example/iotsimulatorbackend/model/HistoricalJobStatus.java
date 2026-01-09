@@ -9,6 +9,7 @@ public class HistoricalJobStatus {
     private int dataPointsGenerated;
     private String currentDate;  // Currently processing date
     private String errorMessage;
+    private String completionMessage;  // Success message with details (including skipped devices)
     private long completionTime;  // Timestamp when job completed/failed (for cleanup)
 
     // Constructors
@@ -87,6 +88,14 @@ public class HistoricalJobStatus {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public String getCompletionMessage() {
+        return completionMessage;
+    }
+
+    public void setCompletionMessage(String completionMessage) {
+        this.completionMessage = completionMessage;
     }
 
     public long getCompletionTime() {

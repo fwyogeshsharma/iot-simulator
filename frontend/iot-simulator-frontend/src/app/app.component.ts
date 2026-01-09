@@ -120,6 +120,7 @@ interface HistoricalJobStatus {
   dataPointsGenerated: number;
   currentDate?: string;
   errorMessage?: string;
+  completionMessage?: string;  // Message with skipped devices info
 }
 
 interface Settings {
@@ -212,7 +213,7 @@ export class AppComponent implements OnInit, OnDestroy {
       'Content-Type': 'application/json',
       'apikey': environment.profilesApiKey
     });
-    this.http.get<Profile[]>(environment.profilesUrl, { headers }).subscribe({
+    this.http.get<Profile[]>(environment.verifiedProfilesUrl, { headers }).subscribe({
       next: (data) => {
         console.log('Profiles loaded:', data);
         this.profiles = data || [];
@@ -754,7 +755,9 @@ export class AppComponent implements OnInit, OnDestroy {
         if (status.status === 'completed') {
           this.stopHistoricalStatusPolling();
           this.generatingHistorical = false;
-          this.historicalMessage = `Successfully generated ${status.dataPointsGenerated} data points across ${status.daysProcessed} days`;
+          // Use completionMessage if available (includes skipped devices info), otherwise construct basic message
+          this.historicalMessage = status.completionMessage ||
+            `Successfully generated ${status.dataPointsGenerated} data points across ${status.daysProcessed} days`;
         } else if (status.status === 'failed') {
           this.stopHistoricalStatusPolling();
           this.generatingHistorical = false;

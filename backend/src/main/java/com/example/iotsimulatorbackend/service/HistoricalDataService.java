@@ -173,7 +173,17 @@ public class HistoricalDataService {
                     throw new RuntimeException("No devices found for the provided device IDs");
                 }
 
-                logger.info("Generating data for {} devices from {} to {}",
+                // Track position-tracking devices (for informational message)
+                List<String> positionTrackingDevices = new ArrayList<>();
+                for (Device device : devices) {
+                    if (Boolean.TRUE.equals(device.getSupportsPositionTracking())) {
+                        positionTrackingDevices.add(device.getDeviceName() + " (" + device.getDeviceId() + ")");
+                        logger.info("📍 Device {} supports position tracking - will skip 'position' data type, but generate other sensor data",
+                            device.getDeviceName());
+                    }
+                }
+
+                logger.info("Generating data for {} device(s) from {} to {}",
                            devices.size(), startDate, endDate);
 
                 // Fetch and cache all device configs ONCE (avoid repeated Supabase queries for 184 days)
@@ -287,7 +297,7 @@ public class HistoricalDataService {
 
                 // Check if there are GPS tracker devices and generate geofence data
                 boolean hasGPSTracker = devices.stream()
-                    .anyMatch(device -> "gps_tracker".equalsIgnoreCase(device.getDeviceType()));
+                    .anyMatch(device -> Boolean.TRUE.equals(device.getSupportsPositionTracking()));
 
                 if (hasGPSTracker) {
                     logger.info("GPS tracker device detected - generating geofence places and events...");
@@ -303,10 +313,10 @@ public class HistoricalDataService {
                         // Generate GPS data and geofence events for each GPS tracker device
                         int gpsDeviceCount = 0;
                         int totalGpsDevices = (int) devices.stream()
-                            .filter(d -> "gps_tracker".equalsIgnoreCase(d.getDeviceType())).count();
+                            .filter(d -> Boolean.TRUE.equals(d.getSupportsPositionTracking())).count();
 
                         for (Device device : devices) {
-                            if ("gps_tracker".equalsIgnoreCase(device.getDeviceType())) {
+                            if (Boolean.TRUE.equals(device.getSupportsPositionTracking())) {
                                 List<Map<String, Object>> geofenceData = generateHistoricalGeofenceData(
                                     device, startDate, endDate, geofencePlaces, daySkipInterval);
                                 allDataPoints.addAll(geofenceData);
@@ -380,10 +390,19 @@ public class HistoricalDataService {
                 }
 
                 long elapsedMs = System.currentTimeMillis() - startTime;
+
+                // Build completion message with position-tracking devices info if any
+                String completionMessage = "Successfully generated " + totalDataPoints.get() + " historical data points";
+                if (!positionTrackingDevices.isEmpty()) {
+                    completionMessage += ". Note: Position data skipped for " + positionTrackingDevices.size() + " device(s): " +
+                        String.join(", ", positionTrackingDevices) + " - use 'Start Simulation' for real-time movement tracking.";
+                }
+
                 status.setStatus("completed");
                 status.setProgress(100);
                 status.setDaysProcessed((int) totalDays);  // Update day counter to show final total
                 status.setCompletionTime(System.currentTimeMillis());  // Track completion time for cleanup
+                status.setCompletionMessage(completionMessage);  // Store completion message with position tracking info
 
                 logger.info("Historical data generation completed - JobID: {}, Total points: {}, Time: {}ms",
                            jobId, totalDataPoints.get(), elapsedMs);
@@ -393,10 +412,11 @@ public class HistoricalDataService {
 
                 HistoricalDataResponse response = new HistoricalDataResponse(
                         jobId, "completed",
-                        "Successfully generated " + totalDataPoints.get() + " historical data points",
+                        completionMessage,
                         totalDataPoints.get(), (int) totalDays, deviceCounts
                 );
                 response.setElapsedMs(elapsedMs);
+                response.setSkippedDevices(positionTrackingDevices);  // Include position-tracking devices in response
 
                 return response;
 
@@ -438,6 +458,13 @@ public class HistoricalDataService {
 
                 // Process each data type for this device
                 for (DataTypeConfig config : configs) {
+                    // Skip position data type for position-tracking devices (Worker, Wearable)
+                    // Position data should only be generated in real-time via 'Start Simulation'
+                    // Other sensor data (heart_rate, steps, activity, etc.) will still be generated
+                    if ("position".equals(config.getDataType()) && Boolean.TRUE.equals(device.getSupportsPositionTracking())) {
+                        continue;
+                    }
+
                     List<Map<String, Object>> dataPoints = generateDataPointsForDay(
                             device, config, date, dayType, includeAnomalies, frequency
                     );
@@ -1615,30 +1642,27 @@ public class HistoricalDataService {
     }
 
     /**
-     * Generate historical GPS coordinates and geofence events for a GPS tracker device
-     * Simulates realistic movement patterns between geofence places over multiple days
+     * Generate historical indoor position data for devices with position tracking
+     * Uses floor plan zones instead of GPS coordinates
+     * Generates ~50 position points per day (one every 30 minutes) for efficient bulk generation
      */
     private List<Map<String, Object>> generateHistoricalGeofenceData(
             Device device, LocalDate startDate, LocalDate endDate, List<GeofencePlace> places, int daySkipInterval) {
 
         List<Map<String, Object>> allDataPoints = new ArrayList<>();
 
-        if (places.isEmpty() || places.size() < 2) {
-            logger.warn("Need at least 2 geofence places to generate movement patterns. Skipping GPS data for device {}", device.getId());
-            return allDataPoints;
-        }
+        logger.info("Generating historical indoor position data for device {} from {} to {}", device.getId(), startDate, endDate);
+        logger.info("Target: ~50 position points per day (one every 30 minutes) for efficient historical generation");
 
-        GeofencePlace home = places.get(0); // First place is Home
-        GeofencePlace work = places.get(1); // Second place is Work
+        // Get floor plan for this elderly person (use default if none exists)
+        FloorPlan floorPlan = FloorPlan.getDefaultFloorPlan(device.getElderlyPersonId());
 
-        logger.info("Generating historical GPS data for device {} from {} to {}", device.getId(), startDate, endDate);
-        logger.info("Movement pattern: {} <-> {}", home.getName(), work.getName());
+        // Create position generator
+        IndoorPositionGenerator positionGenerator = new IndoorPositionGenerator(floorPlan);
 
         LocalDate currentDate = startDate;
-        GeofencePlace currentPlace = home;
-        String currentGeofenceId = null; // Track which geofence we're currently in
-        LocalDateTime lastEntryTime = null;
         int dayCounter = 0;
+        int intervalMinutes = 30; // Generate position every 30 minutes
 
         while (!currentDate.isAfter(endDate)) {
             // Skip future dates
@@ -1653,91 +1677,148 @@ public class HistoricalDataService {
                 continue;
             }
             dayCounter++;
-            DayType dayType = getDayType(currentDate);
 
-            // Generate daily movement pattern
-            // Morning: At home (6:00 AM)
-            LocalDateTime morningTime = currentDate.atTime(6, 0);
+            // Generate positions for the entire day (00:00 to 23:59)
+            LocalDateTime currentTime = currentDate.atStartOfDay();
+            LocalDateTime endOfDay = currentDate.atTime(23, 59);
 
-            // Skip if this timestamp is in the future
-            if (morningTime.isAfter(LocalDateTime.now())) {
-                currentDate = currentDate.plusDays(1);
-                continue;
-            }
+            while (currentTime.isBefore(endOfDay) && currentTime.isBefore(LocalDateTime.now())) {
+                // Generate next indoor position using random walk
+                IndoorPositionGenerator.IndoorPosition position =
+                    positionGenerator.generateNextPosition(intervalMinutes * 60); // Convert to seconds
 
-            if (currentPlace != home || currentGeofenceId == null) {
-                // Generate entry event for home
-                allDataPoints.addAll(createGeofenceEvent(device, home, "entry", morningTime));
-                currentGeofenceId = home.getId();
-                lastEntryTime = morningTime;
-            }
-            // Add GPS reading at home
-            allDataPoints.add(createGPSReading(device, home, morningTime));
+                // Create position data point
+                Map<String, Object> positionData = new LinkedHashMap<>();
+                positionData.put("device_id", device.getId());
+                positionData.put("elderly_person_id", device.getElderlyPersonId());
+                positionData.put("data_type", "position");
 
-            if (dayType == DayType.WEEKDAY) {
-                // Weekday pattern: Go to work
+                // Store position as object with x, y, zone, accuracy, speed (NOT lat/lon!)
+                Map<String, Object> positionValue = new LinkedHashMap<>();
+                positionValue.put("x", roundToDecimalPlaces(position.getX(), 2));
+                positionValue.put("y", roundToDecimalPlaces(position.getY(), 2));
+                positionValue.put("zone", position.getZone());
+                positionValue.put("accuracy", roundToDecimalPlaces(position.getAccuracy(), 2));
+                positionValue.put("speed", roundToDecimalPlaces(position.getSpeed(), 2));
 
-                // Exit home (8:00 AM)
-                LocalDateTime exitHomeTime = currentDate.atTime(8, 0);
-                allDataPoints.addAll(createGeofenceEvent(device, home, "exit", exitHomeTime,
-                    lastEntryTime != null ? (int) ChronoUnit.MINUTES.between(lastEntryTime, exitHomeTime) : null));
-                currentGeofenceId = null;
+                try {
+                    positionData.put("value", objectMapper.writeValueAsString(positionValue));
+                } catch (Exception e) {
+                    logger.error("Error serializing indoor position: {}", e.getMessage());
+                    positionData.put("value", String.format(
+                        "{\"x\":%.2f,\"y\":%.2f,\"zone\":\"%s\",\"accuracy\":%.2f,\"speed\":%.2f}",
+                        position.getX(), position.getY(), position.getZone(),
+                        position.getAccuracy(), position.getSpeed()
+                    ));
+                }
 
-                // Travel time: Add in-transit GPS reading (8:15 AM)
-                LocalDateTime transitTime = currentDate.atTime(8, 15);
-                allDataPoints.add(createInTransitGPSReading(device, home, work, transitTime));
+                positionData.put("unit", "meters");
+                positionData.put("recorded_at", currentTime.atZone(ZoneId.systemDefault()).toInstant().toString());
 
-                // Arrive at work (8:30 AM)
-                LocalDateTime arriveWorkTime = currentDate.atTime(8, 30);
-                allDataPoints.addAll(createGeofenceEvent(device, work, "entry", arriveWorkTime));
-                currentGeofenceId = work.getId();
-                lastEntryTime = arriveWorkTime;
-                currentPlace = work;
+                allDataPoints.add(positionData);
 
-                // Afternoon: At work (2:00 PM)
-                LocalDateTime afternoonTime = currentDate.atTime(14, 0);
-                allDataPoints.add(createGPSReading(device, work, afternoonTime));
-
-                // Exit work (5:00 PM)
-                LocalDateTime exitWorkTime = currentDate.atTime(17, 0);
-                allDataPoints.addAll(createGeofenceEvent(device, work, "exit", exitWorkTime,
-                    lastEntryTime != null ? (int) ChronoUnit.MINUTES.between(lastEntryTime, exitWorkTime) : null));
-                currentGeofenceId = null;
-
-                // Travel back: Add in-transit GPS reading (5:15 PM)
-                LocalDateTime transitBackTime = currentDate.atTime(17, 15);
-                allDataPoints.add(createInTransitGPSReading(device, work, home, transitBackTime));
-
-                // Arrive home (5:30 PM)
-                LocalDateTime arriveHomeTime = currentDate.atTime(17, 30);
-                allDataPoints.addAll(createGeofenceEvent(device, home, "entry", arriveHomeTime));
-                currentGeofenceId = home.getId();
-                lastEntryTime = arriveHomeTime;
-                currentPlace = home;
-
-                // Evening: At home (8:00 PM)
-                LocalDateTime eveningTime = currentDate.atTime(20, 0);
-                allDataPoints.add(createGPSReading(device, home, eveningTime));
-
-            } else {
-                // Weekend pattern: Mostly at home with occasional short trip
-
-                // Stay at home during morning
-                LocalDateTime afternoonTime = currentDate.atTime(14, 0);
-                allDataPoints.add(createGPSReading(device, home, afternoonTime));
-
-                // Evening: At home
-                LocalDateTime eveningTime = currentDate.atTime(20, 0);
-                allDataPoints.add(createGPSReading(device, home, eveningTime));
+                currentTime = currentTime.plusMinutes(intervalMinutes);
             }
 
             currentDate = currentDate.plusDays(1);
         }
 
-        logger.info("Generated {} GPS data points and geofence events for device {}",
+        logger.info("Generated {} indoor position data points for device {}",
             allDataPoints.size(), device.getId());
 
         return allDataPoints;
+    }
+
+    /**
+     * Perform random walk within a geofence place boundaries
+     * Returns new [lat, lon] that stays within the place's radius
+     */
+    private double[] randomWalkWithinPlace(double currentLat, double currentLon,
+                                           GeofencePlace place, double stepSizeMeters) {
+        // Try to move in a random direction
+        double randomBearing = random.nextDouble() * 360;
+        double[] newPos = moveByBearing(currentLat, currentLon, randomBearing, stepSizeMeters);
+
+        // Check if new position is still within place boundaries
+        double distanceFromCenter = calculateDistance(newPos[0], newPos[1],
+                                                      place.getLatitude(), place.getLongitude());
+
+        if (distanceFromCenter <= place.getRadiusMeters() * 0.8) {
+            // Within 80% of radius - accept the move
+            return newPos;
+        } else {
+            // Too far - move back towards center instead
+            double bearingToCenter = calculateBearing(currentLat, currentLon,
+                                                      place.getLatitude(), place.getLongitude());
+            return moveByBearing(currentLat, currentLon, bearingToCenter, stepSizeMeters * 0.5);
+        }
+    }
+
+    /**
+     * Add small random variation to a position (for realistic path variance)
+     */
+    private double[] addPositionVariation(double lat, double lon, double maxVariationMeters) {
+        double randomBearing = random.nextDouble() * 360;
+        double randomDistance = random.nextDouble() * maxVariationMeters;
+        return moveByBearing(lat, lon, randomBearing, randomDistance);
+    }
+
+    /**
+     * Calculate bearing (direction) from one point to another
+     */
+    private double calculateBearing(double lat1, double lon1, double lat2, double lon2) {
+        double φ1 = Math.toRadians(lat1);
+        double φ2 = Math.toRadians(lat2);
+        double Δλ = Math.toRadians(lon2 - lon1);
+
+        double y = Math.sin(Δλ) * Math.cos(φ2);
+        double x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        double θ = Math.atan2(y, x);
+
+        return (Math.toDegrees(θ) + 360) % 360; // Normalize to 0-360
+    }
+
+    /**
+     * Create a realistic position reading with proper accuracy based on context
+     */
+    private Map<String, Object> createRealisticPositionReading(Device device, GeofencePlace place,
+                                                                LocalDateTime timestamp, double lat, double lon,
+                                                                boolean isStationary) {
+        // Stationary positions have better accuracy
+        double accuracy = isStationary
+            ? 5 + random.nextDouble() * 10  // 5-15 meters when stationary
+            : 10 + random.nextDouble() * 20; // 10-30 meters when moving
+
+        return createPositionReading(device, lat, lon, timestamp, accuracy);
+    }
+
+    /**
+     * Create a position reading with specified coordinates and accuracy
+     */
+    private Map<String, Object> createPositionReading(Device device, double lat, double lon,
+                                                       LocalDateTime timestamp, double accuracy) {
+        Map<String, Object> gpsData = new LinkedHashMap<>();
+        gpsData.put("device_id", device.getId());
+        gpsData.put("elderly_person_id", device.getElderlyPersonId());
+        gpsData.put("data_type", "position");
+
+        Map<String, Object> position = new LinkedHashMap<>();
+        position.put("latitude", roundToDecimalPlaces(lat, 6));
+        position.put("longitude", roundToDecimalPlaces(lon, 6));
+        position.put("accuracy", roundToDecimalPlaces(accuracy, 1));
+
+        try {
+            gpsData.put("value", objectMapper.writeValueAsString(position));
+        } catch (Exception e) {
+            logger.error("Error serializing GPS position: {}", e.getMessage());
+            gpsData.put("value", String.format("{\"latitude\":%.6f,\"longitude\":%.6f,\"accuracy\":%.1f}",
+                lat, lon, accuracy));
+        }
+
+        gpsData.put("unit", null);
+        gpsData.put("recorded_at", timestamp.atZone(ZoneId.systemDefault()).toInstant().toString());
+
+        return gpsData;
     }
 
     /**

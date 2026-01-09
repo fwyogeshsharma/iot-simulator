@@ -1,5 +1,8 @@
 <div class="container">
-  <h1><img src="favicon.png" alt="SymBIoT Logo" class="header-logo">SymBIoT Simulator</h1>
+  <div class="header-section">
+    <img src="symbiot-logo.svg" alt="SymBIoT Logo" class="header-logo">
+    <h1>SymBIoT Simulator</h1>
+  </div>
   <p class="subtitle">IoT Health Monitoring Data Simulation Platform</p>
 
   <!-- Step Indicator -->
@@ -293,7 +296,16 @@
       <!-- Historical Data Generation Result -->
       <div class="generated-data" *ngIf="historicalMessage">
         <div class="message" [class.success]="historicalMessage.includes('Successfully')" [class.error]="historicalMessage.includes('Error') || historicalMessage.includes('Failed')">
-          {{historicalMessage}}
+          <!-- Split message into main part and note part for better formatting -->
+          <div *ngIf="historicalMessage.includes('Note:'); else singleMessage">
+            <div class="main-message">{{ historicalMessage.split('Note:')[0].trim() }}</div>
+            <div class="note-message">
+              <strong>Note:</strong> {{ historicalMessage.split('Note:')[1].trim() }}
+            </div>
+          </div>
+          <ng-template #singleMessage>
+            {{historicalMessage}}
+          </ng-template>
         </div>
       </div>
     </div>
