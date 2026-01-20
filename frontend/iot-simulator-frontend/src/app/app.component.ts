@@ -223,13 +223,14 @@ export class AppComponent implements OnInit, OnDestroy {
         console.log('Profiles loaded:', data);
         this.profiles = data || [];
         this.filteredProfiles = [...this.profiles];
-        if (this.settings) {
-          this.selectedProfile = this.profiles.find(p => p.email === this.settings!.email) || null;
-          if (this.selectedProfile) {
-            this.searchText = this.selectedProfile.email;
-            this.onProfileChange();
-          }
-        }
+        // Don't auto-populate from settings - start with empty input
+        // if (this.settings) {
+        //   this.selectedProfile = this.profiles.find(p => p.email === this.settings!.email) || null;
+        //   if (this.selectedProfile) {
+        //     this.searchText = this.selectedProfile.email;
+        //     this.onProfileChange();
+        //   }
+        // }
       },
       error: (err) => {
         console.error('Failed to load profiles:', err);
