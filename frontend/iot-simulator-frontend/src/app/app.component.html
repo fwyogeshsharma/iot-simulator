@@ -25,10 +25,32 @@
     <!-- Step 1: Select Elderly Person -->
     <div class="form-section">
       <label><span class="step-number-label">1.</span> SELECT ELDERLY PERSON</label>
-      <select [(ngModel)]="selectedProfile" name="profile" (change)="onProfileChange()" [disabled]="isSimulating">
-        <option [ngValue]="null">-- Choose a person --</option>
-        <option *ngFor="let p of profiles" [ngValue]="p">{{p.full_name}} ({{p.email}})</option>
-      </select>
+      <div class="autocomplete-container">
+        <input
+          type="text"
+          [(ngModel)]="searchText"
+          name="search"
+          placeholder="Type to search by email or name..."
+          (input)="onSearchTextChange()"
+          (focus)="onSearchFocus()"
+          (blur)="onSearchBlur()"
+          [disabled]="isSimulating"
+          class="autocomplete-input"
+        />
+        <div class="autocomplete-dropdown" *ngIf="showDropdown">
+          <div
+            *ngFor="let p of filteredProfiles"
+            class="autocomplete-item"
+            (click)="selectProfile(p)"
+          >
+            <span class="profile-name">{{p.full_name}}</span>
+            <span class="profile-email">({{p.email}})</span>
+          </div>
+          <div *ngIf="filteredProfiles.length === 0" class="autocomplete-item no-results">
+            No matching profiles found
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Step 2: Select Devices (Multi-select with checkboxes) -->

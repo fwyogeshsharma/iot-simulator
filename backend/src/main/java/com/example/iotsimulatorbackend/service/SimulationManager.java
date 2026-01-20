@@ -584,6 +584,13 @@ public class SimulationManager {
         } else if ("boolean".equals(type)) {
             double probability = ((Number) fieldConfig.getOrDefault("probability", 0.5)).doubleValue();
             return Math.random() < probability;
+        } else if ("enum".equals(type)) {
+            // Handle enum type - select random value from values array
+            List<?> values = (List<?>) fieldConfig.get("values");
+            if (values != null && !values.isEmpty()) {
+                return values.get(new Random().nextInt(values.size()));
+            }
+            return fieldConfig.getOrDefault("default", null);
         } else {
             // Default to string or return as-is
             return fieldConfig.getOrDefault("default", null);

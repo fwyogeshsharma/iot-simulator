@@ -141,6 +141,11 @@ export class AppComponent implements OnInit, OnDestroy {
   selectedElderlyPersonId: string | null = null;  // Track the actual elderly person ID
   selectedDeviceIds: Set<string> = new Set();
 
+  // Autocomplete properties
+  searchText = '';
+  filteredProfiles: Profile[] = [];
+  showDropdown = false;
+
   isSimulating = false;
   startingSimulation = false;
   simulationId: string | null = null;
@@ -217,15 +222,51 @@ export class AppComponent implements OnInit, OnDestroy {
       next: (data) => {
         console.log('Profiles loaded:', data);
         this.profiles = data || [];
+        this.filteredProfiles = [...this.profiles];
         if (this.settings) {
           this.selectedProfile = this.profiles.find(p => p.email === this.settings!.email) || null;
-          if (this.selectedProfile) this.onProfileChange();
+          if (this.selectedProfile) {
+            this.searchText = this.selectedProfile.email;
+            this.onProfileChange();
+          }
         }
       },
       error: (err) => {
         console.error('Failed to load profiles:', err);
       }
     });
+  }
+
+  onSearchTextChange() {
+    const searchLower = this.searchText.toLowerCase();
+    this.filteredProfiles = this.profiles.filter(p =>
+      p.email.toLowerCase().includes(searchLower) ||
+      p.full_name.toLowerCase().includes(searchLower)
+    );
+    this.showDropdown = this.searchText.length > 0 && this.filteredProfiles.length > 0;
+  }
+
+  selectProfile(profile: Profile) {
+    this.selectedProfile = profile;
+    this.searchText = profile.email;
+    this.showDropdown = false;
+    this.onProfileChange();
+  }
+
+  onSearchFocus() {
+    if (this.searchText.length > 0) {
+      this.onSearchTextChange();
+    } else {
+      this.filteredProfiles = [...this.profiles];
+      this.showDropdown = this.profiles.length > 0;
+    }
+  }
+
+  onSearchBlur() {
+    // Delay hiding dropdown to allow click event to register
+    setTimeout(() => {
+      this.showDropdown = false;
+    }, 200);
   }
 
   onProfileChange() {
