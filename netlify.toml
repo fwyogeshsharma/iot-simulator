@@ -2,8 +2,8 @@
   # Base directory where your frontend application is located
   base = "frontend/iot-simulator-frontend"
 
-  # Command to build your Angular application
-  command = "npm install && npm run build"
+  # Command to build your Angular application with production configuration
+  command = "npm install && npm run build -- --configuration=production"
 
   # Directory where your built application will be (output from ng build)
   publish = "dist/iot-simulator-frontend"
