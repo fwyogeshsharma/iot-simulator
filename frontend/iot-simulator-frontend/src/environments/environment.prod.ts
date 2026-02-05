@@ -1,6 +1,6 @@
 export const environment = {
   production: true,
-  backendUrl: 'http://34.93.247.3:3000/api', // Backend URL (for simulation endpoints)
+  backendUrl: '/api', // Proxied through Netlify to avoid mixed content issues
   profilesUrl: 'https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/profiles',
   verifiedProfilesUrl: 'https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/verified_profiles',
   elderlyPersonsUrl: 'https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/elderly_persons',

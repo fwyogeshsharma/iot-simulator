@@ -8,7 +8,14 @@
   # Directory where your built application will be (output from ng build)
   publish = "dist/iot-simulator-frontend"
 
-# Redirect all requests to index.html for Angular routing
+# Proxy API requests to your backend (avoids mixed content blocking)
+[[redirects]]
+  from = "/api/*"
+  to = "http://34.93.247.3:3000/api/:splat"
+  status = 200
+  force = true
+
+# Redirect all other requests to index.html for Angular routing
 [[redirects]]
   from = "/*"
   to = "/index.html"
