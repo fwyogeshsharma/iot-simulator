@@ -18,7 +18,8 @@ public class CorsConfig implements WebMvcConfigurer {
                     "http://34.93.247.3:3000",
                     "http://34.93.247.3:4200",
                     "https://34.93.247.3:3000",
-                    "https://34.93.247.3:4200"
+                    "https://34.93.247.3:4200",
+                    "https://symbiotsim.faberwork.com"
                 )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
