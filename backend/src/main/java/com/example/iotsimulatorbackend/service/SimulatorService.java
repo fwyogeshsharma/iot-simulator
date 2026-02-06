@@ -475,9 +475,16 @@ public class SimulatorService {
                                     coordinates.add(coord);
                                 }
                                 zone.setCoordinates(coordinates);
-                            }
 
-                            zones.add(zone);
+                                // Only add zone if it has valid coordinates
+                                if (!coordinates.isEmpty()) {
+                                    zones.add(zone);
+                                } else {
+                                    System.err.println("⚠️ WARNING: Skipping zone '" + zone.getName() + "' with empty coordinates");
+                                }
+                            } else {
+                                System.err.println("⚠️ WARNING: Skipping zone '" + zone.getName() + "' with no coordinates field");
+                            }
                         }
                     }
 
@@ -489,9 +496,16 @@ public class SimulatorService {
 
             System.out.println("Successfully parsed " + floorPlans.size() + " floor plan(s) for elderly person " + elderlyPersonId);
             if (!floorPlans.isEmpty()) {
-                floorPlans.forEach(fp ->
-                    System.out.println("  -> Floor Plan: " + fp.getName() + " (ID: " + fp.getId() + ", " + fp.getWidth() + "m × " + fp.getHeight() + "m)")
-                );
+                floorPlans.forEach(fp -> {
+                    int zoneCount = fp.getZones() != null ? fp.getZones().size() : 0;
+                    System.out.println("  -> Floor Plan: " + fp.getName() + " (ID: " + fp.getId() + ", " + fp.getWidth() + "m × " + fp.getHeight() + "m, " + zoneCount + " zones)");
+                    if (fp.getZones() != null) {
+                        fp.getZones().forEach(zone -> {
+                            int coordCount = zone.getCoordinates() != null ? zone.getCoordinates().size() : 0;
+                            System.out.println("     └─ Zone: " + zone.getName() + " (" + coordCount + " coordinates)");
+                        });
+                    }
+                });
             }
             return floorPlans;
 

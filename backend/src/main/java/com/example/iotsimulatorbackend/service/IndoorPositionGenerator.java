@@ -178,7 +178,8 @@ public class IndoorPositionGenerator {
      * Get random point within a zone polygon
      */
     private Coordinate getRandomPointInZone(Zone zone) {
-        if (zone.getCoordinates().isEmpty()) {
+        if (zone.getCoordinates() == null || zone.getCoordinates().isEmpty()) {
+            System.err.println("⚠️ WARNING: Zone '" + zone.getName() + "' has no coordinates! Using fallback (5, 5).");
             return new Coordinate(5, 5);
         }
 
@@ -224,6 +225,10 @@ public class IndoorPositionGenerator {
      */
     private Zone findZoneAtPosition(double x, double y) {
         for (Zone zone : floorPlan.getZones()) {
+            // Skip zones with no coordinates
+            if (zone.getCoordinates() == null || zone.getCoordinates().isEmpty()) {
+                continue;
+            }
             if (isPointInPolygon(x, y, zone.getCoordinates())) {
                 return zone;
             }
@@ -239,6 +244,12 @@ public class IndoorPositionGenerator {
         Zone nearest = floorPlan.getZones().get(0);
 
         for (Zone zone : floorPlan.getZones()) {
+            // Skip zones with no coordinates
+            if (zone.getCoordinates() == null || zone.getCoordinates().isEmpty()) {
+                System.err.println("⚠️ WARNING: Skipping zone '" + zone.getName() + "' with no coordinates in getNearestZone");
+                continue;
+            }
+
             Coordinate center = getZoneCenter(zone);
             double dist = Math.sqrt(Math.pow(center.getX() - x, 2) + Math.pow(center.getY() - y, 2));
             if (dist < minDist) {
@@ -254,6 +265,12 @@ public class IndoorPositionGenerator {
      * Get center of zone
      */
     private Coordinate getZoneCenter(Zone zone) {
+        // Handle zones with no coordinates
+        if (zone.getCoordinates() == null || zone.getCoordinates().isEmpty()) {
+            System.err.println("⚠️ WARNING: Zone '" + zone.getName() + "' has no coordinates! Using floor plan center.");
+            return new Coordinate(floorPlan.getWidth() / 2, floorPlan.getHeight() / 2);
+        }
+
         double sumX = 0, sumY = 0;
         for (Coordinate coord : zone.getCoordinates()) {
             sumX += coord.getX();
