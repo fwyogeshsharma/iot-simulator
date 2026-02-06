@@ -31,6 +31,18 @@ public class IndoorPositionGenerator {
     public IndoorPositionGenerator(FloorPlan floorPlan) {
         this.floorPlan = floorPlan;
 
+        // Check if floor plan has zones, if not create a default zone covering entire floor plan
+        if (floorPlan.getZones() == null || floorPlan.getZones().isEmpty()) {
+            System.out.println("⚠️  Floor plan '" + floorPlan.getName() + "' has no zones. Creating default zone.");
+            Zone defaultZone = new Zone("Default Area", List.of(
+                new Coordinate(1, 1),
+                new Coordinate(floorPlan.getWidth() - 1, 1),
+                new Coordinate(floorPlan.getWidth() - 1, floorPlan.getHeight() - 1),
+                new Coordinate(1, floorPlan.getHeight() - 1)
+            ), "#3b82f6");
+            floorPlan.setZones(List.of(defaultZone));
+        }
+
         // Start in a random zone
         this.currentZone = floorPlan.getZones().get(random.nextInt(floorPlan.getZones().size()));
         Coordinate startPos = getRandomPointInZone(currentZone);
@@ -72,9 +84,22 @@ public class IndoorPositionGenerator {
         double newX = currentX + velocityX * intervalSeconds;
         double newY = currentY + velocityY * intervalSeconds;
 
-        // Check boundaries
-        newX = Math.max(0.5, Math.min(floorPlan.getWidth() - 0.5, newX));
-        newY = Math.max(0.5, Math.min(floorPlan.getHeight() - 0.5, newY));
+        // Check boundaries and reverse velocity when hitting walls (bounce effect)
+        if (newX < 0.5) {
+            newX = 0.5;
+            velocityX = -velocityX * 0.8;  // Reverse and dampen
+        } else if (newX > floorPlan.getWidth() - 0.5) {
+            newX = floorPlan.getWidth() - 0.5;
+            velocityX = -velocityX * 0.8;  // Reverse and dampen
+        }
+
+        if (newY < 0.5) {
+            newY = 0.5;
+            velocityY = -velocityY * 0.8;  // Reverse and dampen
+        } else if (newY > floorPlan.getHeight() - 0.5) {
+            newY = floorPlan.getHeight() - 0.5;
+            velocityY = -velocityY * 0.8;  // Reverse and dampen
+        }
 
         // Check if we're in a zone
         Zone newZone = findZoneAtPosition(newX, newY);

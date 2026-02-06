@@ -90,6 +90,14 @@ public class SimulationManager {
                 return null;
             }
 
+            // Extract the actual elderly_person_id from the devices
+            // (The elderlyPersonId parameter might be a user_id, but devices have the actual elderly_person_id)
+            String actualElderlyPersonId = devicesToSimulate.get(0).getElderlyPersonId();
+            if (actualElderlyPersonId != null && !actualElderlyPersonId.equals(elderlyPersonId)) {
+                logger.info("✓ Resolved elderly person ID: {} (from user ID: {})", actualElderlyPersonId, elderlyPersonId);
+                elderlyPersonId = actualElderlyPersonId;
+            }
+
 
             // Check if any selected device is a medication dispenser
             boolean hasMedicationDevice = devicesToSimulate.stream()
@@ -1149,6 +1157,7 @@ public class SimulationManager {
         private final Map<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
         private final Map<String, LocationGenerator> locationGenerators;
         private final Map<String, IndoorPositionGenerator> indoorPositionGenerators = new ConcurrentHashMap<>();
+        private final Map<String, String> deviceFloorPlanIds = new ConcurrentHashMap<>(); // Store floor_plan_id per device
         private volatile boolean isRunning = false;
         private List<GeofencePlace> geofencePlaces = new ArrayList<>();
 
@@ -1179,6 +1188,20 @@ public class SimulationManager {
                 logger.warn("⚠️  No geofence places found - GPS will use random values");
             }
 
+            // Fetch floor plans for indoor position tracking
+            List<com.example.iotsimulatorbackend.model.FloorPlan> floorPlans =
+                simulatorService.getFloorPlansByElderlyPersonId(elderlyPersonId);
+            if (floorPlans.isEmpty()) {
+                logger.warn("⚠️  No floor plans found in database - using hardcoded default");
+                floorPlans = List.of(com.example.iotsimulatorbackend.model.FloorPlan.getDefaultFloorPlan(elderlyPersonId));
+            } else {
+                logger.info("📐 Loaded {} floor plan(s) for indoor position simulation", floorPlans.size());
+                floorPlans.forEach(fp ->
+                    logger.info("   ├─ {} ({}m × {}m) with {} zones",
+                        fp.getName(), fp.getWidth(), fp.getHeight(), fp.getZones() != null ? fp.getZones().size() : 0)
+                );
+            }
+
 
             // For each device, get its data type configs and start scheduling
             int totalScheduled = 0;
@@ -1200,6 +1223,26 @@ public class SimulationManager {
                         // For devices with models, schedule ONE combined data generation task
                         logger.info("   └─ {} (Model: {}) - scheduling combined data generation for {} sensors",
                             device.getDeviceName(), device.getModelName(), configs.size());
+
+                        // Initialize position generator if device has position tracking
+                        for (DataTypeConfig config : configs) {
+                            if ("position".equals(config.getDataType())) {
+                                com.example.iotsimulatorbackend.model.FloorPlan floorPlan = floorPlans.get(0);
+                                String generatorKey = device.getId() + "_position";
+                                indoorPositionGenerators.put(generatorKey, new IndoorPositionGenerator(floorPlan));
+                                // Store floor_plan_id for this device (only if ID is not null)
+                                if (floorPlan.getId() != null) {
+                                    deviceFloorPlanIds.put(device.getId(), floorPlan.getId());
+                                }
+                                logger.info("      → Initialized indoor position generator for {} in {} ({}m × {}m, ID: {})",
+                                    device.getDeviceName(), floorPlan.getName(), floorPlan.getWidth(), floorPlan.getHeight(), floorPlan.getId());
+
+                                // Schedule position data separately (high frequency for smooth playback)
+                                scheduleDataGeneration(device, config);
+                                totalScheduled++;
+                            }
+                        }
+
                         scheduleModelBasedDataGeneration(device);
                         totalScheduled++;
                     } else {
@@ -1208,10 +1251,16 @@ public class SimulationManager {
                         for (DataTypeConfig config : configs) {
                             // Initialize IndoorPositionGenerator for position data (indoor tracking)
                             if ("position".equals(config.getDataType())) {
+                                // Use the first floor plan (or default if none found)
+                                com.example.iotsimulatorbackend.model.FloorPlan floorPlan = floorPlans.get(0);
                                 String generatorKey = device.getId() + "_position";
-                                FloorPlan floorPlan = FloorPlan.getDefaultFloorPlan(device.getElderlyPersonId());
                                 indoorPositionGenerators.put(generatorKey, new IndoorPositionGenerator(floorPlan));
-                                logger.info("      → Initialized indoor position generator for {} in {}", device.getDeviceName(), floorPlan.getName());
+                                // Store floor_plan_id for this device (only if ID is not null)
+                                if (floorPlan.getId() != null) {
+                                    deviceFloorPlanIds.put(device.getId(), floorPlan.getId());
+                                }
+                                logger.info("      → Initialized indoor position generator for {} in {} ({}m × {}m, ID: {})",
+                                    device.getDeviceName(), floorPlan.getName(), floorPlan.getWidth(), floorPlan.getHeight(), floorPlan.getId());
                             }
                             // Initialize LocationGenerator for GPS/location devices (outdoor tracking)
                             else if (("gps".equals(config.getDataType()) || "location".equals(config.getDataType()))) {
@@ -1362,49 +1411,75 @@ public class SimulationManager {
                     }
                 }
 
-                // Create payload with combined sensor data
-                Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put("device_id", device.getDeviceId());
-                // Use the first/primary sensor type as data_type (e.g., "pressure" for bed pad)
-                // This passes the database constraint while the value contains all sensor data
-                payload.put("data_type", primaryDataType);
-                payload.put("value", combinedValue);
-
-                // Include unit from primary data type if available
-                if (primaryUnit != null && !primaryUnit.trim().isEmpty()) {
-                    payload.put("unit", primaryUnit);
-                }
-
-                // Include location if available
-                if (device.getLocation() != null && !device.getLocation().trim().isEmpty()) {
-                    payload.put("location", device.getLocation());
-                }
-
-                // Send to device-ingest endpoint
+                // Send each sensor reading separately (not as combined object)
+                // This ensures compatibility with the edge function's data_type-specific validation
                 HttpHeaders headers = new HttpHeaders();
                 headers.set("Authorization", "Bearer " + device.getApiKey());
                 headers.set("Content-Type", "application/json");
 
-                String payloadJson = objectMapper.writeValueAsString(payload);
-                logger.debug("📤 Sending combined model data: {}", payloadJson);
+                int successCount = 0;
+                int failCount = 0;
 
-                HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+                for (Map.Entry<String, Object> entry : combinedValue.entrySet()) {
+                    String sensorDataType = entry.getKey();
+                    Object sensorValue = entry.getValue();
 
-                ResponseEntity<String> response = restTemplate.postForEntity(
-                    deviceIngestUrl, request, String.class);
+                    // Find the config for this sensor to get its unit
+                    String sensorUnit = null;
+                    for (DataTypeConfig cfg : configs) {
+                        if (sensorDataType.equals(cfg.getDataType())) {
+                            sensorUnit = cfg.getUnit();
+                            break;
+                        }
+                    }
 
-                if (response.getStatusCode().is2xxSuccessful()) {
-                    // Record success in statistics
-                    statistics.recordSuccess(device.getId(), device.getDeviceName(),
-                        primaryDataType, device.getModelName() + " Combined Data");
-                    logger.debug("✓ {} [{}] combined data sent: {}",
-                        device.getDeviceName(), device.getModelName(), combinedValue);
-                } else {
-                    statistics.recordFailure(device.getId(), device.getDeviceName(),
-                        primaryDataType, device.getModelName() + " Combined Data");
-                    logger.warn("⚠️  Combined data send failed for {} - Status: {}",
-                        device.getDeviceId(), response.getStatusCode());
+                    // Create payload for this individual sensor
+                    Map<String, Object> sensorPayload = new LinkedHashMap<>();
+                    sensorPayload.put("device_id", device.getDeviceId());
+                    sensorPayload.put("data_type", sensorDataType);
+                    sensorPayload.put("value", sensorValue);
+
+                    if (sensorUnit != null && !sensorUnit.trim().isEmpty()) {
+                        sensorPayload.put("unit", sensorUnit);
+                    }
+
+                    if (device.getLocation() != null && !device.getLocation().trim().isEmpty()) {
+                        sensorPayload.put("location", device.getLocation());
+                    }
+
+                    try {
+                        String payloadJson = objectMapper.writeValueAsString(sensorPayload);
+                        logger.debug("📤 Sending individual sensor data: {}", payloadJson);
+
+                        HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+                        ResponseEntity<String> response = restTemplate.postForEntity(
+                                deviceIngestUrl, request, String.class
+                        );
+
+                        if (response.getStatusCode().is2xxSuccessful()) {
+                            successCount++;
+                            statistics.recordSuccess(device.getId(), device.getDeviceName(),
+                                sensorDataType, device.getModelName() + " - " + sensorDataType);
+                            logger.debug("✓ {} [{}] {} sent: {}",
+                                device.getDeviceName(), device.getModelName(), sensorDataType, sensorValue);
+                        } else {
+                            failCount++;
+                            statistics.recordFailure(device.getId(), device.getDeviceName(),
+                                sensorDataType, device.getModelName() + " - " + sensorDataType);
+                            logger.warn("⚠️  {} data send failed for {} - Status: {}",
+                                    sensorDataType, device.getDeviceId(), response.getStatusCode());
+                        }
+                    } catch (Exception sendEx) {
+                        failCount++;
+                        statistics.recordFailure(device.getId(), device.getDeviceName(),
+                            sensorDataType, device.getModelName() + " - " + sensorDataType);
+                        logger.error("❌ Error sending {} data for device {}: {}",
+                                sensorDataType, device.getDeviceId(), sendEx.getMessage());
+                    }
                 }
+
+                logger.debug("✅ Sent {} sensor readings for device {} ({} succeeded, {} failed)",
+                        configs.size(), device.getDeviceName(), successCount, failCount);
 
             } catch (Exception e) {
                 statistics.recordFailure(device.getId(), device.getDeviceName(),
@@ -1433,12 +1508,19 @@ public class SimulationManager {
                         positionMap.put("accuracy", Math.round(position.getAccuracy() * 100.0) / 100.0);
                         positionMap.put("speed", Math.round(position.getSpeed() * 100.0) / 100.0);
 
+                        // Add floor_plan_id to associate position with specific floor plan
+                        String floorPlanId = deviceFloorPlanIds.get(device.getId());
+                        if (floorPlanId != null) {
+                            positionMap.put("floor_plan_id", floorPlanId);
+                        }
+
                         // Add zone transition timestamps (ISO 8601 format)
                         positionMap.put("zone_entry_time", java.time.Instant.ofEpochMilli(position.getZoneEntryTime()).toString());
                         if (position.getPreviousZoneExitTime() != null) {
                             positionMap.put("previous_zone_exit_time", java.time.Instant.ofEpochMilli(position.getPreviousZoneExitTime()).toString());
                         }
 
+                        // Use position map as-is (edge function expects JSONB object, not string)
                         generatedValue = positionMap;
 
                         // Log movement info

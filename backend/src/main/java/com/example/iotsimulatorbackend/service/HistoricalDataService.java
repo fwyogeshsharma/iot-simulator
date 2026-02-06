@@ -1714,8 +1714,18 @@ public class HistoricalDataService {
         logger.info("Generating historical indoor position data for device {} from {} to {}", device.getId(), startDate, endDate);
         logger.info("Target: ~50 position points per day (one every 30 minutes) for efficient historical generation");
 
-        // Get floor plan for this elderly person (use default if none exists)
-        FloorPlan floorPlan = FloorPlan.getDefaultFloorPlan(device.getElderlyPersonId());
+        // Get floor plan for this elderly person from database (use default if none exists)
+        List<FloorPlan> floorPlans = simulatorService.getFloorPlansByElderlyPersonId(device.getElderlyPersonId());
+        FloorPlan floorPlan;
+        if (floorPlans.isEmpty()) {
+            logger.warn("No floor plans found in database - using hardcoded default");
+            floorPlan = FloorPlan.getDefaultFloorPlan(device.getElderlyPersonId());
+        } else {
+            floorPlan = floorPlans.get(0);  // Use first floor plan
+            logger.info("Using floor plan: {} ({}m × {}m) with {} zones",
+                floorPlan.getName(), floorPlan.getWidth(), floorPlan.getHeight(),
+                floorPlan.getZones() != null ? floorPlan.getZones().size() : 0);
+        }
 
         // Create position generator
         IndoorPositionGenerator positionGenerator = new IndoorPositionGenerator(floorPlan);
@@ -1761,14 +1771,20 @@ public class HistoricalDataService {
                 positionValue.put("accuracy", roundToDecimalPlaces(position.getAccuracy(), 2));
                 positionValue.put("speed", roundToDecimalPlaces(position.getSpeed(), 2));
 
+                // Add floor_plan_id to associate position with specific floor plan
+                if (floorPlan.getId() != null) {
+                    positionValue.put("floor_plan_id", floorPlan.getId());
+                }
+
                 try {
                     positionData.put("value", objectMapper.writeValueAsString(positionValue));
                 } catch (Exception e) {
                     logger.error("Error serializing indoor position: {}", e.getMessage());
+                    String floorPlanIdStr = floorPlan.getId() != null ? ",\"floor_plan_id\":\"" + floorPlan.getId() + "\"" : "";
                     positionData.put("value", String.format(
-                        "{\"x\":%.2f,\"y\":%.2f,\"zone\":\"%s\",\"accuracy\":%.2f,\"speed\":%.2f}",
+                        "{\"x\":%.2f,\"y\":%.2f,\"zone\":\"%s\",\"accuracy\":%.2f,\"speed\":%.2f%s}",
                         position.getX(), position.getY(), position.getZone(),
-                        position.getAccuracy(), position.getSpeed()
+                        position.getAccuracy(), position.getSpeed(), floorPlanIdStr
                     ));
                 }
 

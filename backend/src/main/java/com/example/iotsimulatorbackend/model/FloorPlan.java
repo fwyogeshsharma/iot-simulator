@@ -71,6 +71,7 @@ public class FloorPlan {
      */
     public static FloorPlan getDefaultFloorPlan(String elderlyPersonId) {
         FloorPlan floorPlan = new FloorPlan();
+        floorPlan.setId("default-floor-plan");
         floorPlan.setElderlyPersonId(elderlyPersonId);
         floorPlan.setName("Main House Floor Plan");
         floorPlan.setWidth(15.0);

@@ -2,6 +2,7 @@ package com.example.iotsimulatorbackend.service;
 
 import com.example.iotsimulatorbackend.model.Device;
 import com.example.iotsimulatorbackend.model.DataTypeConfig;
+import com.example.iotsimulatorbackend.model.FloorPlan;
 import com.example.iotsimulatorbackend.model.GeofencePlace;
 import com.example.iotsimulatorbackend.model.DeviceCompany;
 import com.example.iotsimulatorbackend.model.DeviceModel;
@@ -41,6 +42,9 @@ public class SimulatorService {
 
     @Value("${supabase.geofence-places-url:https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/geofence_places}")
     private String geofencePlacesUrl;
+
+    @Value("${supabase.floor-plans-url:https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/floor_plans}")
+    private String floorPlansUrl;
 
     @Value("${supabase.device-companies-url:https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_companies}")
     private String deviceCompaniesUrl;
@@ -411,6 +415,90 @@ public class SimulatorService {
             return places;
         } catch (Exception e) {
             System.err.println("Error fetching geofence places from Supabase: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Fetch floor plans for an elderly person
+     */
+    public List<FloorPlan> getFloorPlansByElderlyPersonId(String elderlyPersonId) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("apikey", supabaseApiKey);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String url = floorPlansUrl + "?elderly_person_id=eq." + elderlyPersonId;
+            System.out.println("Fetching floor plans from URL: " + url);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            System.out.println("Floor plans response: " + response.getBody());
+            JsonNode jsonArray = objectMapper.readTree(response.getBody());
+
+            List<FloorPlan> floorPlans = new ArrayList<>();
+            for (JsonNode planNode : jsonArray) {
+                FloorPlan plan = new FloorPlan();
+                plan.setId(planNode.get("id").asText());
+                plan.setElderlyPersonId(planNode.get("elderly_person_id").asText());
+                plan.setName(planNode.get("name").asText());
+                plan.setWidth(planNode.get("width").asDouble());
+                plan.setHeight(planNode.get("height").asDouble());
+
+                if (planNode.has("grid_size") && !planNode.get("grid_size").isNull()) {
+                    plan.setGridSize(planNode.get("grid_size").asDouble());
+                } else {
+                    plan.setGridSize(1.0);
+                }
+
+                // Parse zones from JSON
+                if (planNode.has("zones") && !planNode.get("zones").isNull()) {
+                    JsonNode zonesNode = planNode.get("zones");
+                    List<FloorPlan.Zone> zones = new ArrayList<>();
+
+                    if (zonesNode.isArray()) {
+                        for (JsonNode zoneNode : zonesNode) {
+                            FloorPlan.Zone zone = new FloorPlan.Zone();
+                            zone.setName(zoneNode.get("name").asText());
+
+                            if (zoneNode.has("color")) {
+                                zone.setColor(zoneNode.get("color").asText());
+                            }
+
+                            // Parse coordinates
+                            if (zoneNode.has("coordinates") && zoneNode.get("coordinates").isArray()) {
+                                List<FloorPlan.Coordinate> coordinates = new ArrayList<>();
+                                for (JsonNode coordNode : zoneNode.get("coordinates")) {
+                                    FloorPlan.Coordinate coord = new FloorPlan.Coordinate(
+                                        coordNode.get("x").asDouble(),
+                                        coordNode.get("y").asDouble()
+                                    );
+                                    coordinates.add(coord);
+                                }
+                                zone.setCoordinates(coordinates);
+                            }
+
+                            zones.add(zone);
+                        }
+                    }
+
+                    plan.setZones(zones);
+                }
+
+                floorPlans.add(plan);
+            }
+
+            System.out.println("Successfully parsed " + floorPlans.size() + " floor plan(s) for elderly person " + elderlyPersonId);
+            if (!floorPlans.isEmpty()) {
+                floorPlans.forEach(fp ->
+                    System.out.println("  -> Floor Plan: " + fp.getName() + " (ID: " + fp.getId() + ", " + fp.getWidth() + "m × " + fp.getHeight() + "m)")
+                );
+            }
+            return floorPlans;
+
+        } catch (Exception e) {
+            System.err.println("❌ ERROR fetching floor plans from Supabase for elderly person " + elderlyPersonId);
+            System.err.println("   Error message: " + e.getMessage());
+            System.err.println("   Error type: " + e.getClass().getName());
             e.printStackTrace();
             return new ArrayList<>();
         }
