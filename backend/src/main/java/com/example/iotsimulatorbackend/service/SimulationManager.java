@@ -1053,21 +1053,11 @@ public class SimulationManager {
                 result.put("systolic", systolicMin + new Random().nextInt(systolicMax - systolicMin + 1));
                 result.put("diastolic", diastolicMin + new Random().nextInt(diastolicMax - diastolicMin + 1));
                 return result;
-            } else if ("timestamp".equals(config.getConfigType()) || "next_dose_time".equals(config.getDataType())) {
-                // Generate a future timestamp for medication dose times
-                // Generate a time 1-8 hours from now
-                int hoursFromNow = 1 + new Random().nextInt(8); // 1-8 hours
-                int minutesOffset = new Random().nextInt(60); // 0-59 minutes
-
-                java.time.LocalDateTime futureTime = java.time.LocalDateTime.now()
-                    .plusHours(hoursFromNow)
-                    .plusMinutes(minutesOffset)
-                    .withSecond(0)
-                    .withNano(0);
-
-                // Return as 24-hour format string (e.g., "14:30")
-                java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
-                return futureTime.format(formatter);
+            } else if ("last_opened".equals(config.getDataType()) || "next_dose_time".equals(config.getDataType())) {
+                // Generate timestamp - return current timestamp as ISO string without milliseconds
+                return java.time.LocalDateTime.now()
+                    .truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
+                    .toString();
             } else if ("location".equals(config.getDataType())) {
                 // Special handling for GPS location data (check data type, not config)
                 Map<String, Double> latRange = (Map<String, Double>) conf.get("latitude");
@@ -1572,21 +1562,11 @@ public class SimulationManager {
                     result.put("longitude", lonMin + (Math.random() * (lonMax - lonMin)));
                     result.put("accuracy", 10 + (Math.random() * 20)); // 10-30 meters
                     return result;
-                } else if ("timestamp".equals(config.getConfigType()) || "next_dose_time".equals(config.getDataType())) {
-                    // Generate a future timestamp for medication dose times
-                    // Generate a time 1-8 hours from now
-                    int hoursFromNow = 1 + new Random().nextInt(8); // 1-8 hours
-                    int minutesOffset = new Random().nextInt(60); // 0-59 minutes
-
-                    java.time.LocalDateTime futureTime = java.time.LocalDateTime.now()
-                        .plusHours(hoursFromNow)
-                        .plusMinutes(minutesOffset)
-                        .withSecond(0)
-                        .withNano(0);
-
-                    // Return as 24-hour format string (e.g., "14:30")
-                    java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
-                    return futureTime.format(formatter);
+                } else if ("last_opened".equals(config.getDataType()) || "next_dose_time".equals(config.getDataType())) {
+                    // Generate timestamp - return current timestamp as ISO string without milliseconds
+                    return java.time.LocalDateTime.now()
+                        .truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
+                        .toString();
                 } else {
                     double min = ((Number) conf.getOrDefault("min", 0)).doubleValue();
                     double max = ((Number) conf.getOrDefault("max", 100)).doubleValue();

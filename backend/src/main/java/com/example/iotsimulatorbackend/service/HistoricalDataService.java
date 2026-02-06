@@ -519,7 +519,7 @@ public class HistoricalDataService {
             }
 
             // Generate base value
-            Object value = generateBaseValue(config);
+            Object value = generateBaseValue(config, timestamp);
             if (value == null) {
                 continue;
             }
@@ -548,7 +548,7 @@ public class HistoricalDataService {
     /**
      * Generate base value using existing logic from SimulationManager
      */
-    private Object generateBaseValue(DataTypeConfig config) {
+    private Object generateBaseValue(DataTypeConfig config, LocalDateTime timestamp) {
         try {
             String configType = config.getConfigType();
             Map<String, Object> configData = config.getConfig();
@@ -558,8 +558,12 @@ public class HistoricalDataService {
 
             // Timestamp-based data types (e.g., last_opened, next_dose_time)
             if ("last_opened".equals(dataType) || "next_dose_time".equals(dataType)) {
-                // Return current timestamp as ISO string
-                return LocalDateTime.now().toString();
+                // For historical data, use the historical timestamp (not current time)
+                // Generate a random time in the past relative to the data point timestamp
+                int minutesBeforeDataPoint = random.nextInt(120); // 0-2 hours before
+                return timestamp.minusMinutes(minutesBeforeDataPoint)
+                    .truncatedTo(ChronoUnit.SECONDS)
+                    .toString();
             }
 
             // Location data type (latitude, longitude)
@@ -603,7 +607,31 @@ public class HistoricalDataService {
                 return bpValue;
             }
 
-            if ("range".equals(configType)) {
+            if ("combined".equals(configType)) {
+                // Handle combined sensor configs (e.g., bed pad with pressure, occupancy, duration)
+                Map<String, Object> combinedValue = new LinkedHashMap<>();
+                Object fieldsObj = configData.get("fields");
+
+                if (fieldsObj instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> fields = (Map<String, Object>) fieldsObj;
+
+                    // Generate value for each field
+                    for (Map.Entry<String, Object> entry : fields.entrySet()) {
+                        String fieldName = entry.getKey();
+                        Object fieldConfigObj = entry.getValue();
+
+                        if (fieldConfigObj instanceof Map) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> fieldConfig = (Map<String, Object>) fieldConfigObj;
+                            Object fieldValue = generateValueFromFieldConfig(fieldConfig);
+                            combinedValue.put(fieldName, fieldValue);
+                        }
+                    }
+                }
+
+                return combinedValue;
+            } else if ("range".equals(configType)) {
                 // Null-safe config access
                 if (configData == null || !configData.containsKey("min") || !configData.containsKey("max") ||
                     configData.get("min") == null || configData.get("max") == null) {
@@ -628,6 +656,38 @@ public class HistoricalDataService {
             logger.error("Error generating base value for {}: {}", config.getDataType(), e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Generate a single value from a field config (for combined sensor types)
+     */
+    private Object generateValueFromFieldConfig(Map<String, Object> fieldConfig) {
+        String type = (String) fieldConfig.get("type");
+
+        if ("random_number".equals(type)) {
+            double min = ((Number) fieldConfig.getOrDefault("min", 0)).doubleValue();
+            double max = ((Number) fieldConfig.getOrDefault("max", 100)).doubleValue();
+            int precision = ((Number) fieldConfig.getOrDefault("precision", 0)).intValue();
+
+            double value = min + (random.nextDouble() * (max - min));
+
+            if (precision > 0) {
+                return roundToDecimalPlaces(value, precision);
+            } else {
+                return Math.round(value);
+            }
+        } else if ("boolean".equals(type)) {
+            double probability = ((Number) fieldConfig.getOrDefault("probability", 0.5)).doubleValue();
+            return random.nextDouble() < probability;
+        } else if ("enum".equals(type)) {
+            List<?> values = (List<?>) fieldConfig.get("values");
+            if (values != null && !values.isEmpty()) {
+                return values.get(random.nextInt(values.size()));
+            }
+            return fieldConfig.getOrDefault("default", null);
+        } else {
+            return fieldConfig.getOrDefault("default", null);
+        }
     }
 
     /**
