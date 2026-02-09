@@ -26,7 +26,7 @@
 
   <!-- Heartbeat/ECG Wave -->
   <g filter="url(#glow)">
-    <polyline points="20,150 60,150 70,130 80,170 90,100 100,200 110,150 250,150"
+    <polyline points="50,150 60,150 70,130 80,170 90,100 100,200 110,150 250,150"
               fill="none"
               stroke="url(#heartbeatGradient)"
               stroke-width="6"
