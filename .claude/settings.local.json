@@ -7,7 +7,15 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(dir:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(python remove_bg.py:*)",
+      "Bash(pip install:*)",
+      "Bash(python remove_bg_preserve_text.py:*)",
+      "Bash(python convert_png_to_svg.py:*)",
+      "Bash(python:*)",
+      "Bash(ls:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []

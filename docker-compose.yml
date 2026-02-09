@@ -31,26 +31,6 @@ services:
       retries: 10
       start_period: 90s
 
-  # Frontend Service (Angular + Nginx)
-  frontend:
-    build:
-      context: ./frontend/iot-simulator-frontend
-      dockerfile: Dockerfile
-    container_name: iot-simulator-frontend
-    ports:
-      - "4200:80"
-    depends_on:
-      - backend
-    networks:
-      - iot-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/ || exit 0"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 120s
-
 networks:
   iot-network:
     driver: bridge
