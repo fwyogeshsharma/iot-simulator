@@ -104,7 +104,7 @@ fi
 
 # Start services in background
 echo -e "${BLUE}[5/5] Starting services...${NC}"
-docker-compose up -d
+docker-compose up -d --remove-orphans
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Failed to start services${NC}"
@@ -122,19 +122,11 @@ sleep 5
 
 # Check if containers are running
 BACKEND_STATUS=$(docker inspect -f '{{.State.Status}}' iot-simulator-backend 2>/dev/null)
-FRONTEND_STATUS=$(docker inspect -f '{{.State.Status}}' iot-simulator-frontend 2>/dev/null)
 
 if [ "$BACKEND_STATUS" != "running" ]; then
     echo -e "${RED}❌ Backend container not running${NC}"
     echo ""
     echo "Check logs: docker compose logs backend"
-    exit 1
-fi
-
-if [ "$FRONTEND_STATUS" != "running" ]; then
-    echo -e "${RED}❌ Frontend container not running${NC}"
-    echo ""
-    echo "Check logs: docker compose logs frontend"
     exit 1
 fi
 
@@ -156,12 +148,12 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 
 echo -e "${BLUE}Access URLs:${NC}"
-echo "  Frontend: ${GREEN}http://localhost:4200${NC}"
 echo "  Backend:  ${GREEN}http://localhost:3000${NC}"
 echo ""
 echo "  Or from external:"
-echo "  Frontend: ${GREEN}http://34.93.247.3:4200${NC}"
 echo "  Backend:  ${GREEN}http://34.93.247.3:3000${NC}"
+echo ""
+echo "  Note: Frontend is deployed on Netlify"
 echo ""
 
 echo -e "${BLUE}Useful Commands:${NC}"
