@@ -36,6 +36,9 @@ public class HistoricalDataService {
     private MedicationService medicationService;
 
     @Autowired
+    private SleepSessionGenerator sleepSessionGenerator;
+
+    @Autowired
     private RestTemplate restTemplate;
 
     @Autowired
@@ -164,8 +167,38 @@ public class HistoricalDataService {
                 // Get the job status we just created
                 HistoricalJobStatus status = activeJobs.get(jobId);
 
-                LocalDate startDate = LocalDate.parse(request.getStartDate());
-                LocalDate endDate = LocalDate.parse(request.getEndDate());
+                // `days` is a shorthand for an explicit range: [today - days, today].
+                LocalDate startDate;
+                LocalDate endDate;
+                if (request.getDays() > 0) {
+                    endDate = LocalDate.now();
+                    startDate = endDate.minusDays(request.getDays() - 1L);
+                } else {
+                    startDate = LocalDate.parse(request.getStartDate());
+                    endDate = LocalDate.parse(request.getEndDate());
+                }
+
+                // Disease profile, when one was requested. A missing or unknown code
+                // falls back to the generic generator rather than failing the job.
+                DiseaseProfile diseaseProfile = null;
+                if (request.getDiseaseCode() != null && !request.getDiseaseCode().trim().isEmpty()) {
+                    diseaseProfile = simulatorService.getDiseaseProfileByCode(request.getDiseaseCode());
+                    if (diseaseProfile == null) {
+                        logger.warn("Unknown disease code '{}' - falling back to generic generation",
+                                request.getDiseaseCode());
+                    } else {
+                        long requestedDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+                        logger.info("Disease profile: {} ({} days requested, {} minimum, {} recommended)",
+                                diseaseProfile.getName(), requestedDays,
+                                diseaseProfile.getMinDays(), diseaseProfile.getRecommendedDays());
+                        if (requestedDays < diseaseProfile.getMinDays()) {
+                            logger.warn("Requested window is shorter than the {}-day minimum for {} - "
+                                            + "generated data may not be analysable",
+                                    diseaseProfile.getMinDays(), diseaseProfile.getName());
+                        }
+                    }
+                }
+                final DiseaseProfile profile = diseaseProfile;
 
                 // Get devices
                 List<Device> devices = getDevicesForRequest(request);
@@ -247,9 +280,12 @@ public class HistoricalDataService {
 
                     final LocalDate currentDate = date;
                     final DayType dayType = getDayType(date);
+                    // 0-based night number, so profile trends drift over the run
+                    final int dayIndex = (int) ChronoUnit.DAYS.between(startDate, date);
 
                     Future<DayResult> dayFuture = dayExecutor.submit(() -> {
-                        return processSingleDay(currentDate, dayType, devices, deviceConfigsCache, request.isIncludeAnomalies(), request.getFrequency());
+                        return processSingleDay(currentDate, dayType, devices, deviceConfigsCache,
+                                request.isIncludeAnomalies(), request.getFrequency(), profile, dayIndex);
                     });
 
                     dayFutures.add(dayFuture);
@@ -446,6 +482,17 @@ public class HistoricalDataService {
      */
     private DayResult processSingleDay(LocalDate date, DayType dayType, List<Device> devices,
                                         Map<String, List<DataTypeConfig>> deviceConfigsCache, boolean includeAnomalies, String frequency) {
+        return processSingleDay(date, dayType, devices, deviceConfigsCache, includeAnomalies, frequency, null, 0);
+    }
+
+    /**
+     * @param profile  when non-null, sleep-capable devices are generated from this
+     *                 disease profile instead of the generic per-data-type path
+     * @param dayIndex 0-based night number, used for the profile's long-horizon trend
+     */
+    private DayResult processSingleDay(LocalDate date, DayType dayType, List<Device> devices,
+                                        Map<String, List<DataTypeConfig>> deviceConfigsCache, boolean includeAnomalies,
+                                        String frequency, DiseaseProfile profile, int dayIndex) {
         int totalPoints = 0;
         Map<String, Integer> deviceCounts = new HashMap<>();
         List<Map<String, Object>> allDataPoints = new ArrayList<>();  // Collect all data points
@@ -456,12 +503,34 @@ public class HistoricalDataService {
                 // Use cached configs instead of fetching from Supabase every time
                 List<DataTypeConfig> configs = deviceConfigsCache.getOrDefault(device.getId(), new ArrayList<>());
 
+                // Disease-driven path: one coherent night per sleep-capable device.
+                // The generic loop below still runs for this device's non-sleep types.
+                boolean sleepHandled = false;
+                if (profile != null && isSleepCapable(device, configs)) {
+                    List<Map<String, Object>> nightRows =
+                            sleepSessionGenerator.generateNight(device, profile, date, dayIndex);
+                    totalPoints += nightRows.size();
+                    allDataPoints.addAll(nightRows);
+                    deviceCounts.merge(device.getDeviceId(), nightRows.size(), Integer::sum);
+                    sleepHandled = true;
+                }
+
                 // Process each data type for this device
                 for (DataTypeConfig config : configs) {
+                    // Types the sleep generator already emitted for this night
+                    if (sleepHandled && SleepSessionGenerator.GENERATED_TYPES.contains(config.getDataType())) {
+                        continue;
+                    }
                     // Skip position data type for position-tracking devices (Worker, Wearable)
                     // Position data should only be generated in real-time via 'Start Simulation'
                     // Other sensor data (heart_rate, steps, activity, etc.) will still be generated
                     if ("position".equals(config.getDataType()) && Boolean.TRUE.equals(device.getSupportsPositionTracking())) {
+                        continue;
+                    }
+
+                    // Body composition and resting HR arrive far less often than daily
+                    // in a real feed; skip them on days they would not appear.
+                    if (!HealthConnectShapes.emitsOnDay(config.getDataType(), dayIndex)) {
                         continue;
                     }
 
@@ -480,6 +549,26 @@ public class HistoricalDataService {
         }
 
         return new DayResult(totalPoints, deviceCounts, allDataPoints);
+    }
+
+    /**
+     * A device counts as sleep-capable when it declares any of the types the sleep
+     * generator produces. Keyed off the device's own configs rather than a hardcoded
+     * device_type, so any mat/wearable carrying these types picks up the profile.
+     */
+    private boolean isSleepCapable(Device device, List<DataTypeConfig> configs) {
+        for (DataTypeConfig c : configs) {
+            if (SleepSessionGenerator.GENERATED_TYPES.contains(c.getDataType())) {
+                return true;
+            }
+        }
+        List<String> supported = device.getSupportedDataTypes();
+        if (supported != null) {
+            for (String s : supported) {
+                if (SleepSessionGenerator.GENERATED_TYPES.contains(s)) return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -833,14 +922,23 @@ public class HistoricalDataService {
      */
     private Map<String, Object> createPayload(Device device, DataTypeConfig config,
                                                Object value, LocalDateTime timestamp) {
+        String dataType = config.getDataType();
+
         Map<String, Object> payload = new LinkedHashMap<>();  // Use LinkedHashMap for consistent ordering
         payload.put("device_id", device.getId());  // Database UUID
         payload.put("elderly_person_id", device.getElderlyPersonId());  // Required by schema
-        payload.put("data_type", config.getDataType());
-        payload.put("value", value);
+        payload.put("data_type", dataType);
+        // Real devices store every numeric reading as a single-key object
+        // ({"bpm":62}), never a bare number. Types with no mapping pass through
+        // unchanged, so existing device types are unaffected.
+        payload.put("value", HealthConnectShapes.wrap(dataType, value, random));
 
         // ALWAYS include unit field (null if not present) - ensures all records have same keys for batch insert
-        payload.put("unit", (config.getUnit() != null && !config.getUnit().isEmpty()) ? config.getUnit() : null);
+        String unit = (config.getUnit() != null && !config.getUnit().isEmpty()) ? config.getUnit() : null;
+        if (unit == null) {
+            unit = HealthConnectShapes.unitFor(dataType);
+        }
+        payload.put("unit", unit);
 
         // Add timestamp (convert to ISO format)
         payload.put("recorded_at", timestamp.atZone(ZoneId.systemDefault()).toInstant().toString());

@@ -10,6 +10,13 @@ public class HistoricalDataRequest {
     private boolean includeAnomalies = true;
     private String frequency = "high";  // "low", "medium", "high" - controls data generation frequency
 
+    // Disease-driven generation. When diseaseCode is set, sleep-capable devices are
+    // generated from the matching public.disease_profiles row instead of the generic
+    // per-data-type path. `days` is a convenience alternative to startDate/endDate:
+    // when > 0 the range becomes [today - days, today].
+    private String diseaseCode;
+    private int days = 0;
+
     // Constructors
     public HistoricalDataRequest() {
     }
@@ -70,6 +77,22 @@ public class HistoricalDataRequest {
 
     public void setFrequency(String frequency) {
         this.frequency = frequency;
+    }
+
+    public String getDiseaseCode() {
+        return diseaseCode;
+    }
+
+    public void setDiseaseCode(String diseaseCode) {
+        this.diseaseCode = diseaseCode;
+    }
+
+    public int getDays() {
+        return days;
+    }
+
+    public void setDays(int days) {
+        this.days = days;
     }
 
     @Override

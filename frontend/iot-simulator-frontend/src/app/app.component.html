@@ -222,9 +222,24 @@
         </div>
         <div *ngIf="lastModelDataResponse?.dataPoints?.length" class="data-points-list">
           <p><strong>Generated Data Points:</strong></p>
-          <ul>
-            <li *ngFor="let dp of lastModelDataResponse?.dataPoints">
-              <strong>{{dp.data_type}}:</strong> {{dp.value | json}} {{dp.unit || ''}}
+          <ul class="data-point-list">
+            <li *ngFor="let dp of lastModelDataResponse?.dataPoints" class="data-point-item">
+              <div class="data-point-header">
+                <strong>{{dp.data_type}}</strong>
+                <span class="data-point-unit" *ngIf="dp.unit">{{dp.unit}}</span>
+                <button
+                  type="button"
+                  class="raw-json-toggle"
+                  (click)="toggleRawJson(dp.data_type)"
+                >
+                  {{ isRawJsonExpanded(dp.data_type) ? 'Hide JSON' : 'Show JSON' }}
+                </button>
+              </div>
+              <div class="data-point-summary">{{ summarizeDataPoint(dp) }}</div>
+              <div class="data-point-summary" *ngIf="dp.data_type === 'sleep'">
+                {{ sleepStageSummary(dp) }}
+              </div>
+              <pre class="raw-json" *ngIf="isRawJsonExpanded(dp.data_type)">{{ rawJson(dp) }}</pre>
             </li>
           </ul>
         </div>
@@ -278,7 +293,55 @@
         </p>
       </div>
 
-      <div class="form-group" style="margin-bottom: 20px;">
+      <!-- Condition-shaped generation. Leaving this on "None" keeps the original
+           generic 6-month behaviour untouched. -->
+      <div class="form-group" style="margin-bottom: 20px;" *ngIf="showDiseasePicker">
+        <label for="disease">Condition Profile</label>
+        <select
+          id="disease"
+          [(ngModel)]="selectedDiseaseCode"
+          (ngModelChange)="onDiseaseChange()"
+          name="disease"
+          class="form-control"
+        >
+          <option [value]="''">None - generic 6 month data</option>
+          <option *ngFor="let d of diseaseProfiles" [value]="d.code">
+            {{ d.name }} ({{ d.minDays }}-{{ d.recommendedDays }} days)
+          </option>
+        </select>
+        <p class="help-text" *ngIf="selectedDisease" style="margin-top: 8px;">
+          {{ selectedDisease.description }}
+        </p>
+        <p class="help-text" style="margin-top: 8px;">
+          Applies to:
+          <span *ngFor="let d of sleepCapableDevicesSelected; let last = last">
+            {{ d.deviceName }}<span *ngIf="!last">, </span>
+          </span>
+        </p>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 20px;" *ngIf="selectedDisease">
+        <label for="days">Nights to Generate</label>
+        <input
+          id="days"
+          type="number"
+          min="1"
+          max="365"
+          [(ngModel)]="selectedDays"
+          name="days"
+          class="form-control"
+        />
+        <p class="help-text" style="margin-top: 8px;">
+          Minimum {{ selectedDisease.minDays }} nights, {{ selectedDisease.recommendedDays }} recommended.
+          Approximately {{ estimatedRows }} rows will be written.
+        </p>
+        <p class="help-text" *ngIf="daysBelowMinimum" style="margin-top: 8px; color: #b45309;">
+          Below the {{ selectedDisease.minDays }}-night minimum for this condition.
+          Data will still be generated, but may not be long enough to analyse.
+        </p>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 20px;" *ngIf="!selectedDisease">
         <label for="frequency">Data Frequency</label>
         <select id="frequency" [(ngModel)]="selectedFrequency" name="frequency" class="form-control">
           <option [value]="'high'">High (daily)</option>
@@ -293,7 +356,10 @@
         [disabled]="isSimulating || generatingHistorical || selectedDeviceIds.size === 0"
         class="generate-historical-btn"
       >
-        <span *ngIf="!generatingHistorical">Generate 6 Months Historical Data</span>
+        <span *ngIf="!generatingHistorical && !selectedDisease">Generate 6 Months Historical Data</span>
+        <span *ngIf="!generatingHistorical && selectedDisease">
+          Generate {{ selectedDays }} Nights - {{ selectedDisease.name }}
+        </span>
         <span *ngIf="generatingHistorical">Generating...</span>
       </button>
     </div>

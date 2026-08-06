@@ -36,6 +36,9 @@ public class SimulationManager {
     private SimulatorService simulatorService;
 
     @Autowired
+    private SleepSessionGenerator sleepSessionGenerator;
+
+    @Autowired
     private MedicationService medicationService;
 
     @Autowired
@@ -256,6 +259,14 @@ public class SimulationManager {
 
 
         logger.info("📱 Device: {} ({})", targetDevice.getDeviceName(), targetDevice.getDeviceId());
+
+        // Sleep-capable devices produce a full night in the real device's shapes -
+        // one row per data type, with `sleep` carrying the session envelope. The
+        // generic model-spec path below cannot express that: it emits one number per
+        // field and then merges everything into a single combined row.
+        if (isSleepCapable(targetDevice)) {
+            return generateAndSendSleepNight(targetDevice, startTime);
+        }
 
         // Check if device has model specifications
         Map<String, Object> specs = targetDevice.getModelSpecifications();
@@ -825,6 +836,108 @@ public class SimulationManager {
         return result;
     }
 
+
+    /** True when the device's model declares any type the sleep generator produces. */
+    private boolean isSleepCapable(com.example.iotsimulatorbackend.model.Device device) {
+        List<String> supported = device.getSupportedDataTypes();
+        if (supported == null) return false;
+        for (String s : supported) {
+            if (SleepSessionGenerator.GENERATED_TYPES.contains(s)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Generate one night in the real device's shapes and send each row separately
+     * through device-ingest, so alert checks and last_sync behave exactly as they
+     * do for a real device.
+     *
+     * Uses the healthy_baseline profile - this endpoint is "show me what this device
+     * emits", not a condition simulation. For condition-shaped data over many nights,
+     * use /api/simulation/generate-historical with a diseaseCode.
+     */
+    private Map<String, Object> generateAndSendSleepNight(
+            com.example.iotsimulatorbackend.model.Device device, long startTime) {
+
+        com.example.iotsimulatorbackend.model.DiseaseProfile profile =
+                simulatorService.getDiseaseProfileByCode("healthy_baseline");
+        if (profile == null) {
+            // Falls back to the generator's built-in healthy ranges.
+            profile = new com.example.iotsimulatorbackend.model.DiseaseProfile();
+            logger.warn("healthy_baseline profile not found - using generator defaults");
+        }
+
+        List<Map<String, Object>> rows =
+                sleepSessionGenerator.generateNight(device, profile, java.time.LocalDate.now(), 0);
+
+        int successCount = 0;
+        int failCount = 0;
+        List<Map<String, Object>> sentDataPoints = new ArrayList<>();
+
+        for (Map<String, Object> row : rows) {
+            String dataType = (String) row.get("data_type");
+            try {
+                // The generator emits bulk-insert rows (device_id = UUID). device-ingest
+                // instead keys on the hardware device_id and authenticates per device.
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("device_id", device.getDeviceId());
+                payload.put("data_type", dataType);
+                payload.put("value", row.get("value"));
+                if (row.get("unit") != null) {
+                    payload.put("unit", row.get("unit"));
+                }
+                payload.put("recorded_at", row.get("recorded_at"));
+                if (device.getLocation() != null && !device.getLocation().trim().isEmpty()) {
+                    payload.put("location", device.getLocation());
+                }
+
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("Authorization", "Bearer " + device.getApiKey());
+                headers.set("Content-Type", "application/json");
+
+                HttpEntity<String> request =
+                        new HttpEntity<>(objectMapper.writeValueAsString(payload), headers);
+                ResponseEntity<String> response =
+                        restTemplate.postForEntity(deviceIngestUrl, request, String.class);
+
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    successCount++;
+                    Map<String, Object> sent = new LinkedHashMap<>();
+                    sent.put("data_type", dataType);
+                    sent.put("value", row.get("value"));
+                    sent.put("unit", row.get("unit"));
+                    sentDataPoints.add(sent);
+                    logger.info("   ✓ {} sent", dataType);
+                } else {
+                    failCount++;
+                    logger.warn("   ✗ {} - Status: {}", dataType, response.getStatusCode());
+                }
+            } catch (Exception e) {
+                failCount++;
+                logger.warn("   ✗ {} - Error: {}", dataType, e.getMessage());
+            }
+        }
+
+        long totalTime = System.currentTimeMillis() - startTime;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", failCount == 0);
+        result.put("message", String.format(
+                "Generated a sleep session and %d vitals in real device format (%d sent, %d failed)",
+                Math.max(0, rows.size() - 1), successCount, failCount));
+        result.put("deviceId", device.getDeviceId());
+        result.put("modelName", device.getModelName());
+        result.put("companyName", device.getCompanyName());
+        result.put("totalDataPoints", rows.size());
+        result.put("successCount", successCount);
+        result.put("failCount", failCount);
+        result.put("dataPoints", sentDataPoints);
+        result.put("elapsedMs", totalTime);
+
+        logger.info("✅ Sleep night: {}/{} rows sent ({}ms)", successCount, rows.size(), totalTime);
+        logger.info("═══════════════════════════════════════════════════════════════════");
+        return result;
+    }
 
     /**
      * Get a device by its ID directly from Supabase

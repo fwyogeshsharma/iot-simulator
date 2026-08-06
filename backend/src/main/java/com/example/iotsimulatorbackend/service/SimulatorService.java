@@ -52,6 +52,9 @@ public class SimulatorService {
     @Value("${supabase.device-models-url:https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/device_models}")
     private String deviceModelsUrl;
 
+    @Value("${supabase.disease-profiles-url:https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/disease_profiles}")
+    private String diseaseProfilesUrl;
+
     @Value("${supabase.apikey}")
     private String supabaseApiKey;
 
@@ -98,14 +101,18 @@ public class SimulatorService {
             JsonNode jsonArray = objectMapper.readTree(devicesResponse.getBody());
 
             // Fetch device types for description mapping
-            String allDeviceTypesUrl = deviceTypesUrl + "?select=code,name,description,supports_position_tracking";
+            String allDeviceTypesUrl = deviceTypesUrl + "?select=id,code,name,description,supports_position_tracking";
             ResponseEntity<String> deviceTypesResponse = restTemplate.exchange(allDeviceTypesUrl, HttpMethod.GET, entity, String.class);
             JsonNode deviceTypesArray = objectMapper.readTree(deviceTypesResponse.getBody());
 
             Map<String, String> deviceTypeDescriptions = new HashMap<>();
             Map<String, Boolean> deviceTypeSupportsPosition = new HashMap<>();
+            Map<String, String> deviceTypeIdByCode = new HashMap<>();
             for (JsonNode typeNode : deviceTypesArray) {
                 String code = typeNode.get("code").asText();
+                if (typeNode.has("id") && !typeNode.get("id").isNull()) {
+                    deviceTypeIdByCode.put(code, typeNode.get("id").asText());
+                }
                 String description = typeNode.has("description") && !typeNode.get("description").isNull()
                     ? typeNode.get("description").asText()
                     : "";
@@ -116,10 +123,38 @@ public class SimulatorService {
                 deviceTypeSupportsPosition.put(code, supportsPosition);
 
             }
+            // Data types each device TYPE declares. Devices with no model assigned
+            // (most wearables here) have no model-level supported_data_types, so this
+            // is the only signal the UI has for what a device can report. Mirrors the
+            // config-first ordering of isSleepCapable() on the generation side.
+            Map<String, List<String>> deviceTypeDataTypes = new HashMap<>();
+            try {
+                String configsUrl = deviceTypeDataConfigsUrl + "?select=device_type_id,data_type";
+                ResponseEntity<String> configsResponse =
+                        restTemplate.exchange(configsUrl, HttpMethod.GET, entity, String.class);
+                JsonNode configsArray = objectMapper.readTree(configsResponse.getBody());
+
+                Map<String, List<String>> byTypeId = new HashMap<>();
+                for (JsonNode cfg : configsArray) {
+                    if (cfg.get("device_type_id").isNull()) continue;
+                    byTypeId.computeIfAbsent(cfg.get("device_type_id").asText(), k -> new ArrayList<>())
+                            .add(cfg.get("data_type").asText());
+                }
+                for (Map.Entry<String, String> e : deviceTypeIdByCode.entrySet()) {
+                    List<String> types = byTypeId.get(e.getValue());
+                    if (types != null) {
+                        deviceTypeDataTypes.put(e.getKey(), types);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Warning: could not fetch device type data configs: " + e.getMessage());
+            }
+
             // Fetch company and model data for enrichment
             Map<String, String> companyNames = new HashMap<>();
             Map<String, String> modelNames = new HashMap<>();
             Map<String, Map<String, Object>> modelSpecifications = new HashMap<>();
+            Map<String, List<String>> modelSupportedDataTypes = new HashMap<>();
 
             try {
                 // Fetch all companies
@@ -131,7 +166,7 @@ public class SimulatorService {
                 }
 
                 // Fetch all models
-                String allModelsUrl = deviceModelsUrl + "?select=id,name,specifications&is_active=eq.true";
+                String allModelsUrl = deviceModelsUrl + "?select=id,name,specifications,supported_data_types&is_active=eq.true";
                 ResponseEntity<String> modelsResponse = restTemplate.exchange(allModelsUrl, HttpMethod.GET, entity, String.class);
                 JsonNode modelsArray = objectMapper.readTree(modelsResponse.getBody());
                 for (JsonNode modelNode : modelsArray) {
@@ -141,6 +176,16 @@ public class SimulatorService {
                         JsonNode specsNode = modelNode.get("specifications");
                         Map<String, Object> specs = objectMapper.convertValue(specsNode, Map.class);
                         modelSpecifications.put(modelId, specs);
+                    }
+                    // Carried through so the UI can tell which devices support which
+                    // data types (e.g. only offering condition profiles for sleep-capable
+                    // devices). Previously only getDeviceById populated this.
+                    if (modelNode.has("supported_data_types") && modelNode.get("supported_data_types").isArray()) {
+                        List<String> types = new ArrayList<>();
+                        for (JsonNode t : modelNode.get("supported_data_types")) {
+                            types.add(t.asText());
+                        }
+                        modelSupportedDataTypes.put(modelId, types);
                     }
                 }
             } catch (Exception e) {
@@ -181,7 +226,14 @@ public class SimulatorService {
                     device.setModelId(modelId);
                     device.setModelName(modelNames.getOrDefault(modelId, ""));
                     device.setModelSpecifications(modelSpecifications.getOrDefault(modelId, null));
+                    device.setSupportedDataTypes(modelSupportedDataTypes.getOrDefault(modelId, null));
                 }
+                // Fall back to the device type's declared data types when no model is
+                // assigned, so the UI can still tell what this device reports.
+                if (device.getSupportedDataTypes() == null || device.getSupportedDataTypes().isEmpty()) {
+                    device.setSupportedDataTypes(deviceTypeDataTypes.get(deviceTypeCode));
+                }
+
                 // Set supports_position_tracking from device type
                 device.setSupportsPositionTracking(deviceTypeSupportsPosition.getOrDefault(deviceTypeCode, false));
 
@@ -521,6 +573,86 @@ public class SimulatorService {
     /**
      * Fetch all active device companies
      */
+    /**
+     * All active disease simulation profiles, ordered for display.
+     * Backs the simulator UI's condition picker.
+     */
+    public List<com.example.iotsimulatorbackend.model.DiseaseProfile> getDiseaseProfiles() {
+        try {
+            // disease_profiles is RLS-protected with a policy scoped to `authenticated`.
+            // PostgREST derives the role from the Authorization bearer token, not from
+            // apikey alone, so both headers are required for the service role to apply.
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("apikey", supabaseApiKey);
+            headers.set("Authorization", "Bearer " + supabaseApiKey);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String url = diseaseProfilesUrl + "?is_active=eq.true&order=sort_order";
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            JsonNode jsonArray = objectMapper.readTree(response.getBody());
+
+            List<com.example.iotsimulatorbackend.model.DiseaseProfile> profiles = new ArrayList<>();
+            for (JsonNode node : jsonArray) {
+                profiles.add(toDiseaseProfile(node));
+            }
+            System.out.println("✓ Found " + profiles.size() + " disease profiles");
+            return profiles;
+        } catch (Exception e) {
+            System.err.println("Error fetching disease profiles from Supabase: " + e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    /** One profile by code, or null when the code is unknown or the table is missing. */
+    public com.example.iotsimulatorbackend.model.DiseaseProfile getDiseaseProfileByCode(String code) {
+        if (code == null || code.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("apikey", supabaseApiKey);
+            headers.set("Authorization", "Bearer " + supabaseApiKey);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String url = diseaseProfilesUrl + "?code=eq." + code.trim() + "&limit=1";
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            JsonNode jsonArray = objectMapper.readTree(response.getBody());
+
+            if (!jsonArray.isArray() || jsonArray.size() == 0) {
+                System.err.println("No disease profile found for code: " + code);
+                return null;
+            }
+            return toDiseaseProfile(jsonArray.get(0));
+        } catch (Exception e) {
+            System.err.println("Error fetching disease profile '" + code + "': " + e.getMessage());
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private com.example.iotsimulatorbackend.model.DiseaseProfile toDiseaseProfile(JsonNode node) {
+        com.example.iotsimulatorbackend.model.DiseaseProfile p =
+                new com.example.iotsimulatorbackend.model.DiseaseProfile();
+        p.setCode(node.get("code").asText());
+        p.setName(node.get("name").asText());
+        p.setCategory(node.has("category") && !node.get("category").isNull() ? node.get("category").asText() : "");
+        p.setMinDays(node.has("min_days") ? node.get("min_days").asInt() : 0);
+        p.setRecommendedDays(node.has("recommended_days") ? node.get("recommended_days").asInt() : 0);
+        p.setConfidence(node.has("confidence") ? node.get("confidence").asInt() : 0);
+        p.setDescription(node.has("description") && !node.get("description").isNull()
+                ? node.get("description").asText() : "");
+
+        if (node.has("required_signals") && node.get("required_signals").isArray()) {
+            List<String> signals = new ArrayList<>();
+            for (JsonNode s : node.get("required_signals")) signals.add(s.asText());
+            p.setRequiredSignals(signals);
+        }
+        if (node.has("profile") && !node.get("profile").isNull()) {
+            p.setProfile(objectMapper.convertValue(node.get("profile"), Map.class));
+        }
+        return p;
+    }
+
     public List<DeviceCompany> getAllCompanies() {
         try {
             HttpHeaders headers = new HttpHeaders();

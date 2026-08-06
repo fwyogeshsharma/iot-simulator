@@ -23,7 +23,21 @@ interface Device {
   companyName?: string;
   modelName?: string;
   modelSpecifications?: any;
+  supportedDataTypes?: string[];
 }
+
+/**
+ * Data types the backend's SleepSessionGenerator produces. A device must declare
+ * at least one of these for condition profiles to be meaningful, and this list
+ * must stay in step with SleepSessionGenerator.GENERATED_TYPES.
+ */
+const SLEEP_DATA_TYPES = [
+  'sleep',
+  'heart_rate',
+  'respiratory_rate',
+  'heart_rate_variability',
+  'oxygen_saturation'
+];
 
 interface SimulationResponse {
   simulationId: string;
@@ -123,6 +137,17 @@ interface HistoricalJobStatus {
   completionMessage?: string;  // Message with skipped devices info
 }
 
+interface DiseaseProfile {
+  code: string;
+  name: string;
+  category: string;
+  minDays: number;
+  recommendedDays: number;
+  confidence: number;
+  requiredSignals: string[];
+  description: string;
+}
+
 interface Settings {
   email: string;
 }
@@ -181,6 +206,12 @@ export class AppComponent implements OnInit, OnDestroy {
   historicalMessage = '';
   selectedFrequency = 'medium';  // Default to medium frequency
 
+  // Disease-driven generation. Empty code = generic generation over the default
+  // 6-month window, which is the pre-existing behaviour.
+  diseaseProfiles: DiseaseProfile[] = [];
+  selectedDiseaseCode = '';
+  selectedDays = 0;
+
   // Tab management
   activeTab: 'realtime' | 'historical' | 'advanced' = 'realtime';
 
@@ -191,10 +222,135 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnInit() {
     this.loadProfiles();
     this.loadSettings();
+    this.loadDiseaseProfiles();
     // Ensure frequency is initialized
     if (!this.selectedFrequency) {
       this.selectedFrequency = 'medium';
     }
+  }
+
+  loadDiseaseProfiles() {
+    this.http.get<DiseaseProfile[]>(`${environment.backendUrl}/disease-profiles`).subscribe({
+      next: (profiles) => {
+        this.diseaseProfiles = profiles || [];
+        console.log('Disease profiles loaded:', this.diseaseProfiles.length);
+      },
+      error: (err) => {
+        // Non-fatal: the condition picker just stays empty and generation
+        // falls back to the generic 6-month path.
+        console.error('Failed to load disease profiles:', err);
+        this.diseaseProfiles = [];
+      }
+    });
+  }
+
+  get selectedDisease(): DiseaseProfile | null {
+    if (!this.selectedDiseaseCode) return null;
+    return this.diseaseProfiles.find(p => p.code === this.selectedDiseaseCode) || null;
+  }
+
+  /**
+   * Condition profiles only make sense for devices that actually report sleep and
+   * the vitals recorded alongside it - a bed mat or sleep-tracking wearable, not a
+   * door sensor. Mirrors isSleepCapable() on the backend.
+   */
+  isSleepCapableDevice(device: Device): boolean {
+    return (device.supportedDataTypes || []).some(t => SLEEP_DATA_TYPES.includes(t));
+  }
+
+  get sleepCapableDevicesSelected(): Device[] {
+    return this.devices.filter(
+      d => this.selectedDeviceIds.has(d.id) && this.isSleepCapableDevice(d)
+    );
+  }
+
+  get showDiseasePicker(): boolean {
+    return this.diseaseProfiles.length > 0 && this.sleepCapableDevicesSelected.length > 0;
+  }
+
+  /**
+   * Deselecting the last sleep-capable device hides the picker, so clear the
+   * chosen condition too - otherwise a hidden diseaseCode would still be sent.
+   */
+  syncDiseaseSelection() {
+    if (!this.showDiseasePicker && this.selectedDiseaseCode) {
+      this.selectedDiseaseCode = '';
+      this.selectedDays = 0;
+    }
+  }
+
+  /** Default the window to the profile's recommended length when one is picked. */
+  onDiseaseChange() {
+    const disease = this.selectedDisease;
+    this.selectedDays = disease ? disease.recommendedDays : 0;
+  }
+
+  /** True when the chosen window is too short for the condition to be analysable. */
+  get daysBelowMinimum(): boolean {
+    const disease = this.selectedDisease;
+    return !!disease && this.selectedDays > 0 && this.selectedDays < disease.minDays;
+  }
+
+  // Raw-JSON disclosure per generated data point. A sleep session carries a
+  // stages[] array with one entry per minute (~500), so dumping it inline stretches
+  // the page for screens at a time.
+  expandedDataPoints = new Set<string>();
+
+  toggleRawJson(dataType: string) {
+    if (this.expandedDataPoints.has(dataType)) {
+      this.expandedDataPoints.delete(dataType);
+    } else {
+      this.expandedDataPoints.add(dataType);
+    }
+  }
+
+  isRawJsonExpanded(dataType: string): boolean {
+    return this.expandedDataPoints.has(dataType);
+  }
+
+  rawJson(dp: any): string {
+    try {
+      return JSON.stringify(dp?.value, null, 2);
+    } catch {
+      return String(dp?.value);
+    }
+  }
+
+  /** One-line human summary, so the common case needs no JSON reading at all. */
+  summarizeDataPoint(dp: any): string {
+    const v = dp?.value;
+    if (v === null || v === undefined) return '';
+    if (typeof v !== 'object') return `${v}${dp.unit ? ' ' + dp.unit : ''}`;
+
+    if (dp.data_type === 'sleep') {
+      const inBed = v.time_in_bed_minutes || 0;
+      const h = Math.floor(inBed / 60);
+      const m = inBed % 60;
+      return `${h}h ${m}m in bed, ${v.time_asleep_minutes}m asleep, `
+           + `${v.sleep_efficiency_percentage}% efficiency, ${v.awakenings_count} awakenings`;
+    }
+
+    const keys = Object.keys(v);
+    if (keys.length === 1) {
+      return `${v[keys[0]]}${dp.unit ? ' ' + dp.unit : ''}`;
+    }
+    return keys.map(k => `${k}: ${v[k]}`).join(', ');
+  }
+
+  /** Second summary line for sleep: stage breakdown and hypnogram size. */
+  sleepStageSummary(dp: any): string {
+    const sm = dp?.value?.stage_minutes;
+    if (!sm) return '';
+    const stages = dp?.value?.stages;
+    const count = Array.isArray(stages) ? stages.length : 0;
+    return `deep ${sm.deep_minutes}m, rem ${sm.rem_minutes}m, light ${sm.light_minutes}m, `
+         + `awake ${sm.awake_minutes}m — ${count} stage entries`;
+  }
+
+  /** 5 rows per night, counting only the devices the profile will actually drive. */
+  get estimatedRows(): number {
+    const days = this.selectedDays > 0 ? this.selectedDays : 0;
+    return days * 5 * Math.max(1, this.sleepCapableDevicesSelected.length);
   }
 
   ngOnDestroy() {
@@ -410,6 +566,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   checkForSingleDeviceSelection() {
+    // Every device-selection path funnels through here, so this is the one place
+    // the condition picker needs to re-evaluate its visibility.
+    this.syncDiseaseSelection();
+
     if (this.selectedDeviceIds.size === 1) {
       const deviceId = Array.from(this.selectedDeviceIds)[0];
       this.selectedSingleDevice = this.devices.find(d => d.id === deviceId) || null;
@@ -724,7 +884,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - 6);
 
-    const request = {
+    const request: any = {
       elderlyPersonId: this.selectedElderlyPersonId,  // Use actual elderly person ID, not profile ID
       deviceIds: Array.from(this.selectedDeviceIds),
       startDate: startDate.toISOString().split('T')[0], // Format: "2024-06-12"
@@ -732,6 +892,19 @@ export class AppComponent implements OnInit, OnDestroy {
       includeAnomalies: true,
       frequency: this.selectedFrequency  // Add frequency parameter
     };
+
+    // When a condition is chosen, `days` overrides the 6-month window and the
+    // backend shapes sleep data from that disease profile. Without one, the
+    // request is byte-identical to what it was before.
+    if (this.selectedDiseaseCode && this.showDiseasePicker) {
+      request.diseaseCode = this.selectedDiseaseCode;
+      request.days = this.selectedDays > 0
+        ? this.selectedDays
+        : (this.selectedDisease?.recommendedDays || 30);
+      // Disease profiles model one night per day; skipping days would leave
+      // gaps the trend analysis reads as missing nights.
+      request.frequency = 'high';
+    }
 
     console.log('Starting historical data generation:', request);
 

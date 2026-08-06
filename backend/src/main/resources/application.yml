@@ -38,6 +38,7 @@ supabase:
   elderly-persons-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/elderly_persons
   geofence-places-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/geofence_places
   geofence-events-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/geofence_events
+  disease-profiles-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/disease_profiles
   apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpeWZjdnlwZWlmYmRhcW5mZ3JyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTgwMTI0NiwiZXhwIjoyMDc1Mzc3MjQ2fQ.aLEfYBHEgtrjH_99iwriFQTw4pMX5Up7zLq5Bxk0fhs
 
 

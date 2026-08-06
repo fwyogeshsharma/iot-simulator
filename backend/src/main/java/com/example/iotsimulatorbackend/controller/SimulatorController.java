@@ -224,6 +224,16 @@ public class SimulatorController {
         }
     }
 
+    /**
+     * Conditions the simulator can generate data for, for the UI's picker.
+     * Each entry carries min_days / recommended_days so the UI can default the
+     * range and warn when the chosen window is too short to be analysable.
+     */
+    @GetMapping("/disease-profiles")
+    public ResponseEntity<List<com.example.iotsimulatorbackend.model.DiseaseProfile>> getDiseaseProfiles() {
+        return ResponseEntity.ok(service.getDiseaseProfiles());
+    }
+
     @GetMapping("/simulation/historical-status/{jobId}")
     public ResponseEntity<HistoricalJobStatus> getHistoricalJobStatus(@PathVariable String jobId) {
         HistoricalJobStatus status = historicalDataService.getJobStatus(jobId);
