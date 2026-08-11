@@ -96,9 +96,13 @@ public class SleepSessionGenerator {
 
         int timeInBed = targetAsleep + latency + waso;
 
-        // Session starts the evening before the "night" date, matching the real
-        // device where a session titled 2026-08-05 begins 2026-08-04T17:17Z.
-        LocalDateTime start = LocalDateTime.of(night.minusDays(1), bedtime).plusMinutes(bedtimeJitter);
+        // A night is labelled by the morning it ends on, matching the real device
+        // where a session titled 2026-08-05 begins 2026-08-04T17:17Z. An evening
+        // bedtime therefore starts the day before; a post-midnight one (chronic
+        // sleep deprivation goes to bed at 00:30) starts on the night's own date.
+        // Anchoring both to night-1 would shift the whole run a day earlier.
+        LocalDate startDay = bedtime.isBefore(LocalTime.NOON) ? night : night.minusDays(1);
+        LocalDateTime start = LocalDateTime.of(startDay, bedtime).plusMinutes(bedtimeJitter);
         LocalDateTime end = start.plusMinutes(timeInBed);
 
         // ---- stage percentages, with trend drift ----------------------------

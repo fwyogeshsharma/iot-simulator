@@ -23,6 +23,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class HistoricalDataService {
@@ -390,9 +391,20 @@ public class HistoricalDataService {
                 logger.info("Separated data: {} device data points, {} geofence events",
                     deviceDataPoints.size(), geofenceEvents.size());
 
+                // Re-running a range replaces its sleep sessions rather than adding a
+                // second one to each night. Only applies when a disease profile drove
+                // generation, which is the only path that writes randomised bedtimes.
+                int replacedRows = 0;
+                if (profile != null) {
+                    replacedRows = clearExistingSleepNights(devices, deviceConfigsCache, startDate, endDate);
+                    if (replacedRows > 0) {
+                        logger.info("Cleared {} existing sleep-session row(s) before writing this run", replacedRows);
+                    }
+                }
+
                 // PHASE 2: Send all data in optimized 500-row batches with throttling
                 logger.info("Phase 2: Sending {} device data points in 500-row batches with throttling...", deviceDataPoints.size());
-                sendDataInOptimizedBatches(deviceDataPoints, status, (int) totalDays);
+                int rowsInserted = sendDataInOptimizedBatches(deviceDataPoints, status, (int) totalDays);
                 logger.info("Phase 2 complete: All device data sent successfully!");
 
                 // Send geofence events if any
@@ -427,8 +439,19 @@ public class HistoricalDataService {
 
                 long elapsedMs = System.currentTimeMillis() - startTime;
 
-                // Build completion message with position-tracking devices info if any
+                // Build completion message with position-tracking devices info if any.
+                // Report what reached the database, not what was generated - re-running a
+                // range legitimately inserts fewer rows than it generated, and the old
+                // message made that look like a full run every time.
                 String completionMessage = "Successfully generated " + totalDataPoints.get() + " historical data points";
+                int skippedAsDuplicate = deviceDataPoints.size() - rowsInserted;
+                if (skippedAsDuplicate > 0) {
+                    completionMessage += " (" + rowsInserted + " inserted, "
+                            + skippedAsDuplicate + " already present)";
+                }
+                if (replacedRows > 0) {
+                    completionMessage += ". Replaced " + replacedRows + " sleep row(s) from an earlier run for these nights";
+                }
                 if (!positionTrackingDevices.isEmpty()) {
                     completionMessage += ". Note: Position data skipped for " + positionTrackingDevices.size() + " device(s): " +
                         String.join(", ", positionTrackingDevices) + " - use 'Start Simulation' for real-time movement tracking.";
@@ -950,7 +973,7 @@ public class HistoricalDataService {
      * Send all data points in optimized batches with throttling and retry logic
      * This is the key optimization for Supabase free tier performance
      */
-    private void sendDataInOptimizedBatches(List<Map<String, Object>> allDataPoints,
+    private int sendDataInOptimizedBatches(List<Map<String, Object>> allDataPoints,
                                              HistoricalJobStatus status, int totalDays) {
         final int BATCH_SIZE = 250;  // Reduced from 500 to avoid timeouts on Supabase free tier
         final int THROTTLE_MS = 300;  // 300ms delay between batches to avoid CPU spikes
@@ -959,7 +982,11 @@ public class HistoricalDataService {
         int totalBatches = (int) Math.ceil((double) allDataPoints.size() / BATCH_SIZE);
         int batchesCompleted = 0;
         int batchesFailed = 0;
+        int recordsSent = 0;
+        int recordsFailed = 0;
         List<Integer> failedBatchNumbers = new ArrayList<>();
+        AtomicReference<String> lastError = new AtomicReference<>();
+        AtomicInteger rowsInserted = new AtomicInteger();
 
         logger.info("Sending {} data points in {} batches of {} (with up to {} retries per batch)",
                    allDataPoints.size(), totalBatches, BATCH_SIZE, MAX_RETRIES);
@@ -970,12 +997,14 @@ public class HistoricalDataService {
             List<Map<String, Object>> batch = allDataPoints.subList(i, endIndex);
 
             // Send this batch with retry logic
-            boolean success = sendBatchWithRetry(batch, batchNumber, MAX_RETRIES);
+            boolean success = sendBatchWithRetry(batch, batchNumber, MAX_RETRIES, lastError, rowsInserted);
 
             if (success) {
                 batchesCompleted++;
+                recordsSent += batch.size();
             } else {
                 batchesFailed++;
+                recordsFailed += batch.size();
                 failedBatchNumbers.add(batchNumber);
                 logger.error("❌ Batch #{} FAILED after {} retries - {} records NOT inserted",
                            batchNumber, MAX_RETRIES, batch.size());
@@ -1013,19 +1042,29 @@ public class HistoricalDataService {
 
         // Report final results
         if (batchesFailed == 0) {
-            logger.info("✅ Successfully sent all {} data points in {} batches", allDataPoints.size(), batchesCompleted);
+            int skipped = allDataPoints.size() - rowsInserted.get();
+            if (skipped > 0) {
+                logger.info("✅ Sent all {} data points in {} batches - {} inserted, {} already present",
+                           allDataPoints.size(), batchesCompleted, rowsInserted.get(), skipped);
+            } else {
+                logger.info("✅ Successfully sent all {} data points in {} batches", allDataPoints.size(), batchesCompleted);
+            }
+            return rowsInserted.get();
         } else {
-            int recordsFailed = batchesFailed * BATCH_SIZE;
             logger.error("⚠️  Batch insertion completed with failures:");
             logger.error("   ✅ Succeeded: {}/{} batches ({} data points)",
-                       batchesCompleted, totalBatches, batchesCompleted * BATCH_SIZE);
-            logger.error("   ❌ Failed: {}/{} batches (~{} data points)",
+                       batchesCompleted, totalBatches, recordsSent);
+            logger.error("   ❌ Failed: {}/{} batches ({} data points)",
                        batchesFailed, totalBatches, recordsFailed);
             logger.error("   Failed batch numbers: {}", failedBatchNumbers);
+            logger.error("   Last error from Supabase: {}", lastError.get());
+            // Carry the server's own message through to the job status - without it the
+            // UI only ever says "check Supabase logs", which is where this used to end.
             throw new RuntimeException(String.format(
-                "Failed to insert %d batches (~%d records). Failed batches: %s. " +
-                "This will result in incomplete historical data. Please check Supabase logs and retry.",
-                batchesFailed, recordsFailed, failedBatchNumbers));
+                "Failed to insert %d of %d batches (%d of %d records). Failed batches: %s. Last error: %s",
+                batchesFailed, totalBatches, recordsFailed, allDataPoints.size(),
+                failedBatchNumbers,
+                lastError.get() == null ? "none reported" : lastError.get()));
         }
     }
 
@@ -1033,12 +1072,13 @@ public class HistoricalDataService {
      * Send a batch with retry logic and exponential backoff
      * Retries up to maxRetries times with increasing delays between attempts
      */
-    private boolean sendBatchWithRetry(List<Map<String, Object>> batch, int batchNumber, int maxRetries) {
+    private boolean sendBatchWithRetry(List<Map<String, Object>> batch, int batchNumber, int maxRetries,
+                                       AtomicReference<String> lastError, AtomicInteger inserted) {
         int attempt = 1;
 
         while (attempt <= maxRetries) {
             try {
-                boolean success = sendBatchToSupabase(batch);
+                boolean success = sendBatchToSupabase(batch, lastError, inserted);
 
                 if (success) {
                     if (attempt > 1) {
@@ -1079,6 +1119,25 @@ public class HistoricalDataService {
      * Returns true if successful, false otherwise
      */
     private boolean sendBatchToSupabase(List<Map<String, Object>> batch) {
+        return sendBatchToSupabase(batch, new AtomicReference<>(), new AtomicInteger());
+    }
+
+    /**
+     * Send a single batch to Supabase REST API with retry support.
+     *
+     * Rows are inserted as an upsert that ignores duplicates. device_data carries a
+     * unique constraint on (device_id, data_type, recorded_at), and the generator
+     * uses deterministic timestamps, so re-running an overlapping date range would
+     * otherwise abort the whole multi-row INSERT on the first collision - losing
+     * every row in the batch, not just the duplicate one.
+     *
+     * @param lastError receives the server's error text so the caller can surface it
+     * @param inserted  accumulates the rows actually written, which is less than the
+     *                  batch size whenever duplicates were skipped
+     * @return true if successful, false otherwise
+     */
+    private boolean sendBatchToSupabase(List<Map<String, Object>> batch, AtomicReference<String> lastError,
+                                        AtomicInteger inserted) {
         if (batch.isEmpty()) {
             return true;  // Empty batch is considered success
         }
@@ -1105,7 +1164,10 @@ public class HistoricalDataService {
             HttpHeaders headers = new HttpHeaders();
             headers.set("apikey", supabaseApiKey);  // Supabase service role key
             headers.set("Authorization", "Bearer " + supabaseApiKey);
-            headers.set("Prefer", "return=minimal");  // Don't return inserted data (faster)
+            // return=minimal: don't echo the inserted rows back (faster).
+            // resolution=ignore-duplicates: ON CONFLICT DO NOTHING rather than 409.
+            // count=exact: Content-Range reports how many rows were really written.
+            headers.set("Prefer", "return=minimal,resolution=ignore-duplicates,count=exact");
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             // Send entire batch as JSON array to Supabase REST API
@@ -1114,20 +1176,130 @@ public class HistoricalDataService {
             HttpEntity<String> request = new HttpEntity<>(jsonBody, headers);
 
             ResponseEntity<String> response = restTemplate.postForEntity(
-                    supabaseDeviceDataBulkUrl, request, String.class
+                    deviceDataUpsertUrl(), request, String.class
             );
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                logger.debug("✅ Inserted {} records", validBatch.size());
+                int written = parseInsertedCount(response, validBatch.size());
+                inserted.addAndGet(written);
+                if (written < validBatch.size()) {
+                    logger.info("Inserted {} of {} records ({} already existed and were skipped)",
+                               written, validBatch.size(), validBatch.size() - written);
+                } else {
+                    logger.debug("✅ Inserted {} records", written);
+                }
                 return true;
             } else {
+                String detail = response.getStatusCode() + ": " + response.getBody();
+                lastError.set(detail);
                 logger.warn("Batch insert failed with status {}: {}", response.getStatusCode(), response.getBody());
                 return false;
             }
         } catch (Exception e) {
+            lastError.set(e.getMessage());
             logger.warn("Error inserting {} records: {}", validBatch.size(), e.getMessage());
             return false;  // Return false instead of swallowing exception
         }
+    }
+
+    /**
+     * Remove the sleep-session rows a previous run wrote for these nights, so a
+     * re-run replaces them instead of stacking a second session onto each night.
+     *
+     * The generic per-data-type path does not need this - it uses fixed times of day,
+     * so the unique constraint on (device_id, data_type, recorded_at) already makes it
+     * idempotent. The sleep path randomises bedtime by design (it is what separates an
+     * insomnia night from a circadian one), so every re-run lands on a new timestamp and
+     * slips past that constraint. Without this, generating the same range three times
+     * left nights holding three overlapping sleep sessions.
+     *
+     * Only rows of the types the sleep generator writes, only for the devices being
+     * generated, and only inside the window those nights occupy.
+     *
+     * @return number of rows deleted
+     */
+    private int clearExistingSleepNights(List<Device> devices,
+                                         Map<String, List<DataTypeConfig>> deviceConfigsCache,
+                                         LocalDate startDate, LocalDate endDate) {
+        // Every row the sleep generator writes is stamped with the session's END, and a
+        // night is labelled by the morning it ends on - so nights startDate..endDate
+        // occupy exactly [startDate 00:00, endDate+1 00:00). Neighbouring nights outside
+        // the requested range end on their own dates and are left alone.
+        Instant from = startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
+        Instant to = endDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+
+        String types = String.join(",", SleepSessionGenerator.GENERATED_TYPES);
+        String baseUrl = supabaseDeviceDataBulkUrl.contains("?")
+                ? supabaseDeviceDataBulkUrl.substring(0, supabaseDeviceDataBulkUrl.indexOf('?'))
+                : supabaseDeviceDataBulkUrl;
+
+        int totalDeleted = 0;
+        for (Device device : devices) {
+            List<DataTypeConfig> configs = deviceConfigsCache.getOrDefault(device.getId(), new ArrayList<>());
+            if (!isSleepCapable(device, configs)) {
+                continue;
+            }
+
+            String url = String.format("%s?device_id=eq.%s&data_type=in.(%s)&recorded_at=gte.%s&recorded_at=lt.%s",
+                    baseUrl, device.getId(), types, from, to);
+
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("apikey", supabaseApiKey);
+                headers.set("Authorization", "Bearer " + supabaseApiKey);
+                headers.set("Prefer", "return=minimal,count=exact");
+
+                ResponseEntity<String> response = restTemplate.exchange(
+                        url, HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
+
+                int deleted = parseInsertedCount(response, 0);
+                totalDeleted += deleted;
+                if (deleted > 0) {
+                    logger.info("Replaced {} existing sleep-session row(s) for device {} between {} and {}",
+                               deleted, device.getDeviceName(), from, to);
+                }
+            } catch (Exception e) {
+                // Not fatal: the run still inserts its new nights. It just means the old
+                // ones survive alongside them, which is the pre-existing behaviour.
+                logger.error("Could not clear existing sleep rows for device {}: {}",
+                            device.getDeviceName(), e.getMessage());
+            }
+        }
+        return totalDeleted;
+    }
+
+    /**
+     * Rows actually written, read from PostgREST's Content-Range ("&#42;/12"). Falls back
+     * to the batch size when the header is missing, so a proxy that strips it degrades
+     * to the old optimistic count rather than reporting zero.
+     */
+    private int parseInsertedCount(ResponseEntity<String> response, int batchSize) {
+        String range = response.getHeaders().getFirst("Content-Range");
+        if (range == null) {
+            return batchSize;
+        }
+        int slash = range.indexOf('/');
+        if (slash < 0) {
+            return batchSize;
+        }
+        try {
+            return Integer.parseInt(range.substring(slash + 1).trim());
+        } catch (NumberFormatException e) {
+            return batchSize;  // "*/*" when the server declines to count
+        }
+    }
+
+    /**
+     * The bulk insert URL with the on_conflict target PostgREST needs to turn an
+     * insert into ON CONFLICT DO NOTHING. Must name the columns of the unique
+     * constraint device_data_device_type_recorded_at_key.
+     */
+    private String deviceDataUpsertUrl() {
+        String url = supabaseDeviceDataBulkUrl;
+        if (url.contains("on_conflict=")) {
+            return url;
+        }
+        return url + (url.contains("?") ? "&" : "?") + "on_conflict=device_id,data_type,recorded_at";
     }
 
     /**
