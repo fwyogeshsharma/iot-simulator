@@ -390,6 +390,36 @@ input[type="number"]:disabled {
   font-weight: 500;
 }
 
+/* Device load failure - read as a problem to act on, not as information */
+.error-message {
+  background: linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%);
+  border: 2px solid #FCA5A5;
+  border-left: 4px solid #DC2626;
+  color: #991B1B;
+}
+
+.error-message p {
+  margin: 0 0 12px 0;
+  line-height: 1.7;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.retry-button {
+  background: #DC2626;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retry-button:hover {
+  background: #B91C1C;
+}
+
 /* Tab Navigation */
 .tabs-container {
   margin: 40px 0 0 0;

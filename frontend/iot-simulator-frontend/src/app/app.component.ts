@@ -161,6 +161,9 @@ export class AppComponent implements OnInit, OnDestroy {
   profiles: Profile[] = [];
   devices: Device[] = [];
   loadingDevices = false;
+  // Set when a device load fails, so the empty list is not misreported as "this person
+  // has no devices". A 504 from the proxy used to render exactly like an empty result.
+  deviceLoadError: string | null = null;
 
   selectedProfile: Profile | null = null;
   selectedElderlyPersonId: string | null = null;  // Track the actual elderly person ID
@@ -434,6 +437,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.selectedSingleDevice = null;
     this.lastGeneratedData = null;
     this.loadingDevices = true;
+    this.deviceLoadError = null;
     if (!this.selectedProfile) return;
 
     // Call Supabase directly - query elderly_persons by user_id
@@ -465,6 +469,7 @@ export class AppComponent implements OnInit, OnDestroy {
         console.error('Failed to load elderly persons:', err);
         this.devices = [];
         this.loadingDevices = false;
+        this.deviceLoadError = this.describeHttpError(err, 'Could not look up this person');
       }
     });
     this.saveSettings();
@@ -497,8 +502,36 @@ export class AppComponent implements OnInit, OnDestroy {
         console.error('Failed to load devices from backend:', err);
         this.devices = [];
         this.loadingDevices = false;
+        this.deviceLoadError = this.describeHttpError(err, 'Could not load devices');
       }
     });
+  }
+
+  /**
+   * Turn an HttpErrorResponse into something that says what actually went wrong.
+   * A gateway timeout and a person with no devices are very different problems, and
+   * the UI used to present them identically.
+   */
+  private describeHttpError(err: any, prefix: string): string {
+    const status = err?.status;
+    if (status === 0) {
+      return `${prefix}: the simulator backend could not be reached. Check that it is running.`;
+    }
+    if (status === 504 || status === 502 || status === 503) {
+      return `${prefix}: the backend did not respond in time (HTTP ${status}). This is usually temporary - retry in a moment.`;
+    }
+    if (status) {
+      const detail = err?.error?.message || err?.message || '';
+      return `${prefix}: HTTP ${status}${detail ? ' - ' + detail : ''}`;
+    }
+    return `${prefix}: ${err?.message || 'unknown error'}`;
+  }
+
+  retryLoadDevices() {
+    if (!this.selectedProfile) { return; }
+    this.deviceLoadError = null;
+    this.loadingDevices = true;
+    this.onProfileChange();
   }
 
   checkActiveSimulation() {

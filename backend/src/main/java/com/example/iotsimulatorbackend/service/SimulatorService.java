@@ -18,12 +18,64 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
 public class SimulatorService {
     @Autowired
     private RestTemplate restTemplate;
+
+    /**
+     * Reference tables - device types, their data configs, companies, models - are the
+     * same for every caller and change about as often as a migration runs. Fetching them
+     * on each request made a single device lookup six sequential Supabase round trips
+     * (~2s), and gave it six chances to hit a stalled connection. Caching them briefly
+     * cuts that to two.
+     */
+    private static final long REFERENCE_CACHE_TTL_MS = 5 * 60 * 1000L;
+
+    private final Map<String, CachedJson> referenceCache = new ConcurrentHashMap<>();
+
+    private static final class CachedJson {
+        final JsonNode body;
+        final long expiresAt;
+
+        CachedJson(JsonNode body, long expiresAt) {
+            this.body = body;
+            this.expiresAt = expiresAt;
+        }
+    }
+
+    /**
+     * GET a reference table, serving a cached copy while it is fresh.
+     *
+     * If the refresh fails and a stale copy exists, the stale copy is returned rather
+     * than propagating the failure: reference data going a few minutes out of date is a
+     * far better outcome than the device list coming back empty because a lookup of
+     * company names timed out.
+     */
+    private JsonNode getReferenceJson(String url, HttpEntity<String> entity) throws Exception {
+        long now = System.currentTimeMillis();
+        CachedJson cached = referenceCache.get(url);
+        if (cached != null && cached.expiresAt > now) {
+            return cached.body;
+        }
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            JsonNode body = objectMapper.readTree(response.getBody());
+            referenceCache.put(url, new CachedJson(body, now + REFERENCE_CACHE_TTL_MS));
+            return body;
+        } catch (Exception e) {
+            if (cached != null) {
+                System.err.println("Reference fetch failed for " + url + " (" + e.getMessage()
+                        + ") - serving cached copy");
+                return cached.body;
+            }
+            throw e;
+        }
+    }
 
     @Value("${supabase.devices-url}")
     private String devicesUrl;
@@ -102,8 +154,7 @@ public class SimulatorService {
 
             // Fetch device types for description mapping
             String allDeviceTypesUrl = deviceTypesUrl + "?select=id,code,name,description,supports_position_tracking";
-            ResponseEntity<String> deviceTypesResponse = restTemplate.exchange(allDeviceTypesUrl, HttpMethod.GET, entity, String.class);
-            JsonNode deviceTypesArray = objectMapper.readTree(deviceTypesResponse.getBody());
+            JsonNode deviceTypesArray = getReferenceJson(allDeviceTypesUrl, entity);
 
             Map<String, String> deviceTypeDescriptions = new HashMap<>();
             Map<String, Boolean> deviceTypeSupportsPosition = new HashMap<>();
@@ -130,9 +181,7 @@ public class SimulatorService {
             Map<String, List<String>> deviceTypeDataTypes = new HashMap<>();
             try {
                 String configsUrl = deviceTypeDataConfigsUrl + "?select=device_type_id,data_type";
-                ResponseEntity<String> configsResponse =
-                        restTemplate.exchange(configsUrl, HttpMethod.GET, entity, String.class);
-                JsonNode configsArray = objectMapper.readTree(configsResponse.getBody());
+                JsonNode configsArray = getReferenceJson(configsUrl, entity);
 
                 Map<String, List<String>> byTypeId = new HashMap<>();
                 for (JsonNode cfg : configsArray) {
@@ -159,16 +208,14 @@ public class SimulatorService {
             try {
                 // Fetch all companies
                 String allCompaniesUrl = deviceCompaniesUrl + "?select=id,name&is_active=eq.true";
-                ResponseEntity<String> companiesResponse = restTemplate.exchange(allCompaniesUrl, HttpMethod.GET, entity, String.class);
-                JsonNode companiesArray = objectMapper.readTree(companiesResponse.getBody());
+                JsonNode companiesArray = getReferenceJson(allCompaniesUrl, entity);
                 for (JsonNode companyNode : companiesArray) {
                     companyNames.put(companyNode.get("id").asText(), companyNode.get("name").asText());
                 }
 
                 // Fetch all models
                 String allModelsUrl = deviceModelsUrl + "?select=id,name,specifications,supported_data_types&is_active=eq.true";
-                ResponseEntity<String> modelsResponse = restTemplate.exchange(allModelsUrl, HttpMethod.GET, entity, String.class);
-                JsonNode modelsArray = objectMapper.readTree(modelsResponse.getBody());
+                JsonNode modelsArray = getReferenceJson(allModelsUrl, entity);
                 for (JsonNode modelNode : modelsArray) {
                     String modelId = modelNode.get("id").asText();
                     modelNames.put(modelId, modelNode.get("name").asText());
@@ -249,9 +296,13 @@ public class SimulatorService {
 
             return devices;
         } catch (Exception e) {
+            // Deliberately not returning an empty list here. Doing so made a failed
+            // lookup indistinguishable from a person who genuinely has no devices, and
+            // the UI reported "No devices found for this elderly person" while the real
+            // problem was that Supabase never answered.
             System.err.println("Error fetching devices from Supabase: " + e.getMessage());
             e.printStackTrace();
-            return new ArrayList<>();
+            throw new RuntimeException("Could not load devices: " + e.getMessage(), e);
         }
     }
 

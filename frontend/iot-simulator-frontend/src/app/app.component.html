@@ -102,8 +102,14 @@
       <p>Loading devices...</p>
     </div>
 
+    <!-- Device Load Failure - distinct from a person who genuinely has no devices -->
+    <div class="form-section error-message" *ngIf="selectedProfile && !loadingDevices && deviceLoadError">
+      <p>{{ deviceLoadError }}</p>
+      <button type="button" class="retry-button" (click)="retryLoadDevices()">Retry</button>
+    </div>
+
     <!-- No Devices Message -->
-    <div class="form-section info-message" *ngIf="selectedProfile && !loadingDevices && devices.length === 0">
+    <div class="form-section info-message" *ngIf="selectedProfile && !loadingDevices && !deviceLoadError && devices.length === 0">
       <p>No devices found for this elderly person. Please select another person or add devices first.</p>
     </div>
 
