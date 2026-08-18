@@ -137,6 +137,14 @@
           </button>
           <button
             class="tab"
+            [class.active]="activeTab === 'rehab'"
+            (click)="setActiveTab('rehab')"
+            type="button"
+          >
+            <span class="tab-label">Rehab &amp; Recovery</span>
+          </button>
+          <button
+            class="tab"
             [class.active]="activeTab === 'advanced'"
             (click)="setActiveTab('advanced')"
             type="button"
@@ -405,6 +413,94 @@
     </div>
 
     </div><!-- End HISTORICAL TAB CONTENT -->
+
+    <!-- REHAB & RECOVERY TAB CONTENT -->
+    <div class="tab-content" *ngIf="activeTab === 'rehab'">
+
+      <div class="form-section historical-section">
+        <label>Rehab &amp; Recovery Trajectory</label>
+      </div>
+
+      <div class="historical-info">
+        <p>
+          Generates the rehab and recovery signals that no wearable can measure: the program
+          enrollment, daily pain and exercise-adherence check-ins, and the IRQ craving and
+          sobriety log. Device metrics are left alone &mdash; those come from Historical Data.
+        </p>
+      </div>
+
+      <div class="form-section">
+        <label>Trajectory</label>
+        <select [(ngModel)]="rehabTrajectory" class="disease-select">
+          <option value="improvement">Improvement &mdash; pain falls, adherence and sobriety climb</option>
+          <option value="degradation">Degradation &mdash; pain rises, adherence drops, relapse logged</option>
+        </select>
+      </div>
+
+      <div class="rehab-row">
+        <div class="rehab-field">
+          <label>Program length (days)</label>
+          <input type="number" [(ngModel)]="rehabDays" [min]="rehabMinDays" max="365" class="rehab-input" />
+        </div>
+        <div class="rehab-field">
+          <label>Baseline window (days)</label>
+          <input type="number" [(ngModel)]="rehabBaselineDays" min="3" max="30" class="rehab-input" />
+        </div>
+      </div>
+
+      <!-- The scoring functions skip every domain while the baseline and recent windows would
+           overlap, so warn before the request rather than after it comes back unscored. -->
+      <div class="form-section info-message" *ngIf="rehabDays < rehabMinDays">
+        <p>
+          A {{rehabBaselineDays}}-day baseline needs a program of at least {{rehabMinDays}} days.
+          Below that the baseline and recent windows overlap and nothing is scored.
+        </p>
+      </div>
+
+      <div class="form-section rehab-checkbox">
+        <label>
+          <input type="checkbox" [(ngModel)]="rehabIncludeRecovery" />
+          Also generate IRQ recovery data (craving check-ins + sobriety events)
+        </label>
+      </div>
+
+      <button
+        (click)="generateRehabData()"
+        [disabled]="generatingRehab || !selectedElderlyPersonId || rehabDays < rehabMinDays"
+        class="generate-historical-btn"
+      >
+        <span *ngIf="!generatingRehab">Generate {{rehabTrajectory === 'degradation' ? 'Degradation' : 'Improvement'}} Trajectory</span>
+        <span *ngIf="generatingRehab">Generating...</span>
+      </button>
+
+      <div class="form-section historical-progress-section" *ngIf="rehabMessage || rehabResult">
+        <div class="generated-data" *ngIf="rehabMessage">
+          <div class="message" [class.success]="!rehabError" [class.error]="rehabError">
+            {{rehabMessage}}
+          </div>
+        </div>
+
+        <div class="rehab-scores" *ngIf="rehabResult?.rehab?.overall_score !== undefined && rehabResult?.rehab?.overall_score !== null">
+          <h4>Rehab progress &mdash; overall {{rehabResult.rehab.overall_score}} ({{rehabResult.rehab.overall_trend}})</h4>
+          <div class="rehab-domain" *ngFor="let d of rehabResult.rehab.domains">
+            <span class="rehab-domain-key">{{d.domain_key}}</span>
+            <span class="rehab-domain-score" [class.improving]="d.trend === 'improving'" [class.declining]="d.trend === 'declining'">
+              {{d.score === null ? '--' : d.score}}
+            </span>
+            <span class="rehab-domain-conf">{{d.confidence}}</span>
+          </div>
+        </div>
+
+        <div class="rehab-scores" *ngIf="rehabResult?.irq?.irq_score !== undefined">
+          <h4>IRQ &mdash; {{rehabResult.irq.irq_score}}</h4>
+          <div class="rehab-domain" *ngFor="let c of irqComponents()">
+            <span class="rehab-domain-key">{{c.key}}</span>
+            <span class="rehab-domain-score">{{c.value}}</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- End REHAB TAB CONTENT -->
 
     <!-- REAL-TIME SIMULATION TAB CONTENT -->
     <div class="tab-content" *ngIf="activeTab === 'realtime'">

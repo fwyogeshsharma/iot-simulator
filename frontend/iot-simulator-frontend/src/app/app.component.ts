@@ -216,7 +216,18 @@ export class AppComponent implements OnInit, OnDestroy {
   selectedDays = 0;
 
   // Tab management
-  activeTab: 'realtime' | 'historical' | 'advanced' = 'realtime';
+  activeTab: 'realtime' | 'historical' | 'rehab' | 'advanced' = 'realtime';
+
+  // Rehab & recovery trajectory generation. Writes only the signals a wearable cannot
+  // produce - enrollment, pain/adherence check-ins, craving and sobriety log.
+  rehabTrajectory: 'improvement' | 'degradation' = 'improvement';
+  rehabDays = 60;
+  rehabBaselineDays = 14;
+  rehabIncludeRecovery = true;
+  generatingRehab = false;
+  rehabMessage = '';
+  rehabError = false;
+  rehabResult: any = null;
 
   settings: Settings | null = null;
 
@@ -892,8 +903,70 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  setActiveTab(tab: 'realtime' | 'historical' | 'advanced') {
+  setActiveTab(tab: 'realtime' | 'historical' | 'rehab' | 'advanced') {
     this.activeTab = tab;
+  }
+
+  /**
+   * The scoring functions refuse to score while the baseline and recent windows overlap,
+   * so the program has to be at least twice the baseline window.
+   */
+  get rehabMinDays(): number {
+    return this.rehabBaselineDays * 2;
+  }
+
+  irqComponents(): Array<{ key: string; value: any }> {
+    const scores = this.rehabResult?.irq?.component_scores;
+    if (!scores) { return []; }
+    return Object.keys(scores).map(k => ({
+      key: k.replace(/_/g, ' '),
+      value: Math.round(scores[k] * 10) / 10
+    }));
+  }
+
+  generateRehabData() {
+    if (!this.selectedElderlyPersonId) {
+      this.rehabError = true;
+      this.rehabMessage = 'Select an elderly person first.';
+      return;
+    }
+
+    this.generatingRehab = true;
+    this.rehabError = false;
+    this.rehabMessage = '';
+    this.rehabResult = null;
+
+    const body = {
+      elderlyPersonId: this.selectedElderlyPersonId,
+      trajectory: this.rehabTrajectory,
+      days: this.rehabDays,
+      baselineWindowDays: this.rehabBaselineDays,
+      includeRecovery: this.rehabIncludeRecovery
+    };
+
+    this.http.post<any>(`${environment.backendUrl}/rehab/generate`, body).subscribe({
+      next: (res) => {
+        this.generatingRehab = false;
+        this.rehabResult = res;
+        const parts = [
+          `${res.manualCheckinsWritten} rehab check-in(s)`,
+        ];
+        if (res.recoveryCheckinsWritten) {
+          parts.push(`${res.recoveryCheckinsWritten} craving check-in(s)`);
+          parts.push(`${res.sobrietyEventsWritten} sobriety event(s)`);
+        }
+        this.rehabMessage =
+          `Generated a ${res.trajectory} trajectory from ${res.programStartDate}: ` +
+          parts.join(', ') + '.';
+      },
+      error: (err) => {
+        this.generatingRehab = false;
+        this.rehabError = true;
+        this.rehabMessage = err?.error?.error
+          ? `Could not generate: ${err.error.error}`
+          : this.describeHttpError(err, 'Could not generate rehab data');
+      }
+    });
   }
 
   generateHistoricalData() {

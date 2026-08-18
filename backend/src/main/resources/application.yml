@@ -39,9 +39,18 @@ supabase:
   geofence-places-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/geofence_places
   geofence-events-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/geofence_events
   disease-profiles-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/disease_profiles
+  # Rehab progress + IRQ recovery tables. Everything the two scores read that a wearable
+  # cannot produce; the device-derived half already comes from normal device generation.
+  rehab-enrollments-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/rehab_enrollments
+  rehab-manual-checkins-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/rehab_manual_checkins
+  rehab-analysis-runs-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/rehab_progress_analysis_runs
+  recovery-checkins-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/recovery_checkins
+  recovery-sobriety-events-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/recovery_sobriety_events
+  rpc-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/rpc
   apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpeWZjdnlwZWlmYmRhcW5mZ3JyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTgwMTI0NiwiZXhwIjoyMDc1Mzc3MjQ2fQ.aLEfYBHEgtrjH_99iwriFQTw4pMX5Up7zLq5Bxk0fhs
 
 
 simulator:
   device-ingest-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/functions/v1/device-ingest
   device-ingest-bulk-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/functions/v1/device-ingest-bulk
+  irq-compute-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/functions/v1/irq-compute

@@ -1449,3 +1449,97 @@ button:disabled {
     font-size: 12px;
   }
 }
+
+/* Rehab & Recovery tab */
+.rehab-row {
+  display: flex;
+  gap: 20px;
+  margin: 0 0 20px 0;
+}
+
+.rehab-field {
+  flex: 1;
+}
+
+.rehab-field label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.rehab-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid var(--gray-200);
+  border-radius: var(--border-radius);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.rehab-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.rehab-checkbox input {
+  width: auto;
+}
+
+.rehab-scores {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius);
+}
+
+.rehab-scores h4 {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  color: var(--gray-900);
+}
+
+.rehab-domain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 14px;
+}
+
+.rehab-domain:last-child {
+  border-bottom: none;
+}
+
+.rehab-domain-key {
+  flex: 1;
+  text-transform: capitalize;
+  color: var(--gray-700);
+}
+
+.rehab-domain-score {
+  font-weight: 700;
+  min-width: 60px;
+  text-align: right;
+  color: var(--gray-500);
+}
+
+/* Direction is the point of this screen, so the two trends have to be
+   distinguishable at a glance rather than by reading the number. */
+.rehab-domain-score.improving {
+  color: var(--success-hover);
+}
+
+.rehab-domain-score.declining {
+  color: var(--danger-hover);
+}
+
+.rehab-domain-conf {
+  min-width: 130px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--gray-400);
+}

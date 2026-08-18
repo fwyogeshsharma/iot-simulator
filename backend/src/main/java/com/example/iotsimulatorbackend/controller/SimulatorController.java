@@ -14,10 +14,12 @@ import com.example.iotsimulatorbackend.model.MedicationSimulationResponse;
 import com.example.iotsimulatorbackend.model.HistoricalDataRequest;
 import com.example.iotsimulatorbackend.model.HistoricalDataResponse;
 import com.example.iotsimulatorbackend.model.HistoricalJobStatus;
+import com.example.iotsimulatorbackend.model.RehabDataRequest;
 import com.example.iotsimulatorbackend.service.SimulatorService;
 import com.example.iotsimulatorbackend.service.SimulationManager;
 import com.example.iotsimulatorbackend.service.MedicationService;
 import com.example.iotsimulatorbackend.service.HistoricalDataService;
+import com.example.iotsimulatorbackend.service.RehabDataService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -40,6 +42,9 @@ public class SimulatorController {
 
     @Autowired
     private HistoricalDataService historicalDataService;
+
+    @Autowired
+    private RehabDataService rehabDataService;
 
     @GetMapping("/devices/{elderlyPersonId}")
     public ResponseEntity<List<Device>> getDevices(@PathVariable String elderlyPersonId) {
@@ -229,6 +234,25 @@ public class SimulatorController {
      * Each entry carries min_days / recommended_days so the UI can default the
      * range and warn when the chosen window is too short to be analysable.
      */
+    /**
+     * Generate a rehab / recovery trajectory for one person: the enrollment that anchors the
+     * baseline window, the daily pain and adherence check-ins, and the IRQ craving and sobriety
+     * log. Device-derived metrics are not touched - those come from historical device generation.
+     *
+     * Synchronous on purpose. It writes a few hundred rows at most, unlike historical device
+     * generation which needs the async job pattern.
+     */
+    @PostMapping("/rehab/generate")
+    public ResponseEntity<Map<String, Object>> generateRehabData(@RequestBody RehabDataRequest request) {
+        try {
+            return ResponseEntity.ok(rehabDataService.generate(request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", String.valueOf(e.getMessage())));
+        }
+    }
+
     @GetMapping("/disease-profiles")
     public ResponseEntity<List<com.example.iotsimulatorbackend.model.DiseaseProfile>> getDiseaseProfiles() {
         return ResponseEntity.ok(service.getDiseaseProfiles());
