@@ -431,7 +431,7 @@
 
       <div class="form-section">
         <label>Trajectory</label>
-        <select [(ngModel)]="rehabTrajectory" class="disease-select">
+        <select [(ngModel)]="rehabTrajectory" name="rehabTrajectory" class="disease-select">
           <option value="improvement">Improvement &mdash; pain falls, adherence and sobriety climb</option>
           <option value="degradation">Degradation &mdash; pain rises, adherence drops, relapse logged</option>
         </select>
@@ -440,11 +440,11 @@
       <div class="rehab-row">
         <div class="rehab-field">
           <label>Program length (days)</label>
-          <input type="number" [(ngModel)]="rehabDays" [min]="rehabMinDays" max="365" class="rehab-input" />
+          <input type="number" [(ngModel)]="rehabDays" name="rehabDays" [min]="rehabMinDays" max="365" class="rehab-input" />
         </div>
         <div class="rehab-field">
           <label>Baseline window (days)</label>
-          <input type="number" [(ngModel)]="rehabBaselineDays" min="3" max="30" class="rehab-input" />
+          <input type="number" [(ngModel)]="rehabBaselineDays" name="rehabBaselineDays" min="3" max="30" class="rehab-input" />
         </div>
       </div>
 
@@ -459,7 +459,7 @@
 
       <div class="form-section rehab-checkbox">
         <label>
-          <input type="checkbox" [(ngModel)]="rehabIncludeRecovery" />
+          <input type="checkbox" [(ngModel)]="rehabIncludeRecovery" name="rehabIncludeRecovery" />
           Also generate IRQ recovery data (craving check-ins + sobriety events)
         </label>
       </div>
