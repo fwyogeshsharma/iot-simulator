@@ -224,6 +224,7 @@ export class AppComponent implements OnInit, OnDestroy {
   rehabDays = 60;
   rehabBaselineDays = 14;
   rehabIncludeRecovery = true;
+  rehabIncludeDeviceMetrics = true;
   generatingRehab = false;
   rehabMessage = '';
   rehabError = false;
@@ -941,7 +942,8 @@ export class AppComponent implements OnInit, OnDestroy {
       trajectory: this.rehabTrajectory,
       days: this.rehabDays,
       baselineWindowDays: this.rehabBaselineDays,
-      includeRecovery: this.rehabIncludeRecovery
+      includeRecovery: this.rehabIncludeRecovery,
+      includeDeviceMetrics: this.rehabIncludeDeviceMetrics
     };
 
     this.http.post<any>(`${environment.backendUrl}/rehab/generate`, body).subscribe({

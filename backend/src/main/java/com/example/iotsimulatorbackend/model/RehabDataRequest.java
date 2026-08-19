@@ -30,6 +30,15 @@ public class RehabDataRequest {
     /** Also write the IRQ tables (craving check-ins + sobriety events). */
     private boolean includeRecovery = true;
 
+    /**
+     * Also move the device-derived metrics along the trajectory.
+     *
+     * Without this only the manual domain responds, and a degrading run still averages out as
+     * "stable" because mobility, cardio, body composition and sleep sit where the generic
+     * generator left them.
+     */
+    private boolean includeDeviceMetrics = true;
+
     /** Run the rehab scoring RPC and irq-compute once the data is in place. */
     private boolean scoreAfterGenerate = true;
 
@@ -83,6 +92,14 @@ public class RehabDataRequest {
 
     public void setIncludeRecovery(boolean includeRecovery) {
         this.includeRecovery = includeRecovery;
+    }
+
+    public boolean isIncludeDeviceMetrics() {
+        return includeDeviceMetrics;
+    }
+
+    public void setIncludeDeviceMetrics(boolean includeDeviceMetrics) {
+        this.includeDeviceMetrics = includeDeviceMetrics;
     }
 
     public boolean isScoreAfterGenerate() {

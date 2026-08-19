@@ -462,6 +462,10 @@
           <input type="checkbox" [(ngModel)]="rehabIncludeRecovery" name="rehabIncludeRecovery" />
           Also generate IRQ recovery data (craving check-ins + sobriety events)
         </label>
+        <label>
+          <input type="checkbox" [(ngModel)]="rehabIncludeDeviceMetrics" name="rehabIncludeDeviceMetrics" />
+          Move device metrics along the trajectory (mobility, cardio, body composition, sleep)
+        </label>
       </div>
 
       <button

@@ -46,6 +46,7 @@ supabase:
   rehab-analysis-runs-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/rehab_progress_analysis_runs
   recovery-checkins-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/recovery_checkins
   recovery-sobriety-events-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/recovery_sobriety_events
+  irq-scores-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/irq_scores
   rpc-url: https://wiyfcvypeifbdaqnfgrr.supabase.co/rest/v1/rpc
   apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpeWZjdnlwZWlmYmRhcW5mZ3JyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTgwMTI0NiwiZXhwIjoyMDc1Mzc3MjQ2fQ.aLEfYBHEgtrjH_99iwriFQTw4pMX5Up7zLq5Bxk0fhs
 
