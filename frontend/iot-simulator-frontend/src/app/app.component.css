@@ -1680,3 +1680,13 @@ button:disabled {
   gap: 10px;
   margin-left: auto;
 }
+
+/* The two panels use 0-100 scales that mean different things: rehab domains are scored as
+   change against a baseline, IRQ components as closeness to a healthy value. Without this
+   line, 88 and 90 look like the same kind of number and they are not. */
+.scale-hint {
+  margin: -6px 0 12px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--gray-500);
+}

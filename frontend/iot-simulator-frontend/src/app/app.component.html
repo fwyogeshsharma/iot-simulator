@@ -488,6 +488,7 @@
 
         <div class="rehab-scores" *ngIf="rehabResult?.rehab?.overall_score !== undefined && rehabResult?.rehab?.overall_score !== null">
           <h4>Rehab progress &mdash; overall {{rehabResult.rehab.overall_score}} ({{rehabResult.rehab.overall_trend}})</h4>
+          <p class="scale-hint">Change since baseline &mdash; 50 is no change, 100 is the most improvement expected, 0 the most decline.</p>
           <div class="rehab-domain" *ngFor="let d of rehabResult.rehab.domains"
                [class.manual-source]="isManualSource(d.domain_key)">
             <span class="rehab-domain-key">
@@ -508,6 +509,7 @@
 
         <div class="rehab-scores" *ngIf="rehabResult?.irq?.irq_score !== undefined">
           <h4>IRQ &mdash; {{rehabResult.irq.irq_score}}</h4>
+          <p class="scale-hint">Current state, not change &mdash; 100 is the healthy optimum for each signal. Direction over time is on the score history chart.</p>
           <div class="rehab-domain" *ngFor="let c of irqComponents()" [class.manual-source]="c.manual">
             <span class="rehab-domain-key">
               {{c.label}}
