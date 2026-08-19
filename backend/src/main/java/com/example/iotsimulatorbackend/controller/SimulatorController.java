@@ -20,6 +20,7 @@ import com.example.iotsimulatorbackend.service.SimulationManager;
 import com.example.iotsimulatorbackend.service.MedicationService;
 import com.example.iotsimulatorbackend.service.HistoricalDataService;
 import com.example.iotsimulatorbackend.service.RehabDataService;
+import com.example.iotsimulatorbackend.service.DataCleanupService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -45,6 +46,9 @@ public class SimulatorController {
 
     @Autowired
     private RehabDataService rehabDataService;
+
+    @Autowired
+    private DataCleanupService dataCleanupService;
 
     @GetMapping("/devices/{elderlyPersonId}")
     public ResponseEntity<List<Device>> getDevices(@PathVariable String elderlyPersonId) {
@@ -246,6 +250,21 @@ public class SimulatorController {
     public ResponseEntity<Map<String, Object>> generateRehabData(@RequestBody RehabDataRequest request) {
         try {
             return ResponseEntity.ok(rehabDataService.generate(request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", String.valueOf(e.getMessage())));
+        }
+    }
+
+    /**
+     * Delete everything the simulator has written for one person, so a demo can start from a
+     * clean slate. Destructive and immediate - the confirmation belongs in the caller.
+     */
+    @PostMapping("/data/cleanup")
+    public ResponseEntity<Map<String, Object>> cleanupPersonData(@RequestBody Map<String, String> request) {
+        try {
+            return ResponseEntity.ok(dataCleanupService.cleanup(request.get("elderlyPersonId")));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {

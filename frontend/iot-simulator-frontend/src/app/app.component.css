@@ -1545,3 +1545,138 @@ button:disabled {
   font-size: 12px;
   color: var(--gray-400);
 }
+
+/* Human-entered rows in the rehab result panel.
+   The score keeps its own improving/declining colour, so the manual marker lives on the
+   row and its label instead - a red number would read as "declining" and say the wrong
+   thing about a metric that might be going well. */
+.rehab-domain.manual-source {
+  background: #FEF2F2;
+  border-left: 3px solid var(--danger-color);
+  margin: 0 -8px;
+  padding-left: 9px;
+  padding-right: 8px;
+  border-radius: 3px;
+}
+
+.rehab-domain.manual-source .rehab-domain-key {
+  color: var(--danger-hover);
+  font-weight: 600;
+}
+
+.manual-badge {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 1px 7px;
+  border: 1px solid var(--danger-color);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--danger-hover);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.manual-legend {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px 0 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--gray-600);
+}
+
+.manual-swatch {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  margin-top: 2px;
+  border-radius: 3px;
+  background: #FEF2F2;
+  border-left: 3px solid var(--danger-color);
+}
+
+/* Raised when a trajectory wrote its human-entered half but not its device half - the
+   result then looks contradictory, with the manual domain declining while the four
+   device domains keep the previous run's improving scores. */
+.rehab-warning {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: var(--warning-light);
+  border: 1px solid var(--warning-color);
+  border-left: 3px solid var(--warning-hover);
+  border-radius: var(--border-radius);
+  color: #7C4A03;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Reset control. Visually separated from the generate controls above it, because the two
+   sit in the same tab and only one of them is destructive. */
+.cleanup-section {
+  border-color: var(--danger-light);
+  background: linear-gradient(135deg, #FFF8F8 0%, #FEF2F2 100%);
+}
+
+.cleanup-help {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--gray-600);
+}
+
+.cleanup-btn {
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: var(--border-radius);
+  border: 2px solid var(--danger-color);
+  background: #ffffff;
+  color: var(--danger-hover);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cleanup-btn:hover:not(:disabled) {
+  background: var(--danger-color);
+  color: #ffffff;
+}
+
+.cleanup-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cleanup-btn.danger {
+  background: var(--danger-color);
+  border-color: var(--danger-color);
+  color: #ffffff;
+}
+
+.cleanup-btn.danger:hover {
+  background: var(--danger-hover);
+  border-color: var(--danger-hover);
+}
+
+.cleanup-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 2px solid var(--danger-color);
+  border-radius: var(--border-radius);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--danger-hover);
+}
+
+.cleanup-actions {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}

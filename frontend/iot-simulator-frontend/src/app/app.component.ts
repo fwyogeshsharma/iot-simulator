@@ -228,7 +228,14 @@ export class AppComponent implements OnInit, OnDestroy {
   generatingRehab = false;
   rehabMessage = '';
   rehabError = false;
+  rehabWarning = '';
   rehabResult: any = null;
+
+  // Reset-to-clean-slate, for starting a demo from a known state.
+  cleanupArmed = false;
+  cleaningUp = false;
+  cleanupMessage = '';
+  cleanupError = false;
 
   settings: Settings | null = null;
 
@@ -916,13 +923,97 @@ export class AppComponent implements OnInit, OnDestroy {
     return this.rehabBaselineDays * 2;
   }
 
-  irqComponents(): Array<{ key: string; value: any }> {
+  /**
+   * Domain and component labels, matching DOMAIN_LABELS in the platform's
+   * src/lib/rehabProgress.ts so the same row is named the same thing in both UIs
+   * when the two are shown side by side.
+   */
+  private readonly REHAB_DOMAIN_LABELS: { [key: string]: string } = {
+    mobility: 'Mobility',
+    cardio: 'Cardiovascular',
+    body_comp: 'Body composition',
+    sleep: 'Sleep & recovery',
+    manual: 'Pain & adherence'
+  };
+
+  /**
+   * The signals a wearable cannot measure, which a person logs by hand. The generator
+   * fills them in so a trajectory can be demonstrated end to end, but they are the
+   * human half of both scores and worth calling out as such.
+   */
+  private readonly MANUAL_SOURCES = ['manual', 'sobriety', 'craving_control'];
+
+  isManualSource(key: string): boolean {
+    return this.MANUAL_SOURCES.indexOf(key) !== -1;
+  }
+
+  domainLabel(key: string): string {
+    return this.REHAB_DOMAIN_LABELS[key] || key;
+  }
+
+  irqComponents(): Array<{ key: string; label: string; value: any; manual: boolean }> {
     const scores = this.rehabResult?.irq?.component_scores;
     if (!scores) { return []; }
     return Object.keys(scores).map(k => ({
-      key: k.replace(/_/g, ' '),
-      value: Math.round(scores[k] * 10) / 10
+      key: k,
+      label: k.replace(/_/g, ' '),
+      value: Math.round(scores[k] * 10) / 10,
+      manual: this.isManualSource(k)
     }));
+  }
+
+  /**
+   * Two steps on purpose. This deletes every reading and score the simulator has written for
+   * the selected person, and a single misplaced click during a demo would be unrecoverable.
+   */
+  armCleanup() {
+    this.cleanupArmed = true;
+    this.cleanupMessage = '';
+    this.cleanupError = false;
+  }
+
+  cancelCleanup() {
+    this.cleanupArmed = false;
+  }
+
+  confirmCleanup() {
+    if (!this.selectedElderlyPersonId) {
+      this.cleanupError = true;
+      this.cleanupMessage = 'Select an elderly person first.';
+      return;
+    }
+
+    this.cleaningUp = true;
+    this.cleanupArmed = false;
+    this.cleanupMessage = '';
+    this.cleanupError = false;
+
+    this.http.post<any>(`${environment.backendUrl}/data/cleanup`, {
+      elderlyPersonId: this.selectedElderlyPersonId
+    }).subscribe({
+      next: (res) => {
+        this.cleaningUp = false;
+        const parts = Object.keys(res.deleted || {})
+          .filter(k => res.deleted[k] > 0)
+          .map(k => `${res.deleted[k]} ${k}`);
+        this.cleanupMessage = parts.length
+          ? `Cleared ${res.totalRowsDeleted} row(s): ` + parts.join(', ') + '.'
+          : 'Nothing to clear - this person already had no simulator data.';
+
+        // The screens that read this data are now empty, so stale results on screen would
+        // contradict what the dashboards show.
+        this.rehabResult = null;
+        this.rehabMessage = '';
+        this.rehabWarning = '';
+      },
+      error: (err) => {
+        this.cleaningUp = false;
+        this.cleanupError = true;
+        this.cleanupMessage = err?.error?.error
+          ? `Could not clear data: ${err.error.error}`
+          : this.describeHttpError(err, 'Could not clear data');
+      }
+    });
   }
 
   generateRehabData() {
@@ -935,6 +1026,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.generatingRehab = true;
     this.rehabError = false;
     this.rehabMessage = '';
+    this.rehabWarning = '';
     this.rehabResult = null;
 
     const body = {
@@ -957,9 +1049,26 @@ export class AppComponent implements OnInit, OnDestroy {
           parts.push(`${res.recoveryCheckinsWritten} craving check-in(s)`);
           parts.push(`${res.sobrietyEventsWritten} sobriety event(s)`);
         }
+        if (res.deviceRowsWritten) {
+          parts.push(`${res.deviceRowsWritten} device reading(s)`);
+        }
+        if (res.irqHistoryWritten) {
+          parts.push(`${res.irqHistoryWritten} day(s) of IRQ history`);
+        }
         this.rehabMessage =
           `Generated a ${res.trajectory} trajectory from ${res.programStartDate}: ` +
           parts.join(', ') + '.';
+
+        // Without this the device domains silently keep whatever the previous run left
+        // behind, so a degrading trajectory can still show four improving domains.
+        if (!res.deviceRowsWritten) {
+          this.rehabWarning = res.deviceMetricsSkipped
+            ? `Device metrics were skipped: ${res.deviceMetricsSkipped}. Mobility, cardiovascular, ` +
+              `body composition and sleep still show the previous run's data.`
+            : `Device metrics were not generated, so mobility, cardiovascular, body composition and ` +
+              `sleep still show the previous run's data. Tick "Move device metrics along the ` +
+              `trajectory" and generate again.`;
+        }
       },
       error: (err) => {
         this.generatingRehab = false;

@@ -484,22 +484,77 @@
           </div>
         </div>
 
+        <div class="rehab-warning" *ngIf="rehabWarning">{{rehabWarning}}</div>
+
         <div class="rehab-scores" *ngIf="rehabResult?.rehab?.overall_score !== undefined && rehabResult?.rehab?.overall_score !== null">
           <h4>Rehab progress &mdash; overall {{rehabResult.rehab.overall_score}} ({{rehabResult.rehab.overall_trend}})</h4>
-          <div class="rehab-domain" *ngFor="let d of rehabResult.rehab.domains">
-            <span class="rehab-domain-key">{{d.domain_key}}</span>
+          <div class="rehab-domain" *ngFor="let d of rehabResult.rehab.domains"
+               [class.manual-source]="isManualSource(d.domain_key)">
+            <span class="rehab-domain-key">
+              {{domainLabel(d.domain_key)}}
+              <span class="manual-badge" *ngIf="isManualSource(d.domain_key)">human input</span>
+            </span>
             <span class="rehab-domain-score" [class.improving]="d.trend === 'improving'" [class.declining]="d.trend === 'declining'">
               {{d.score === null ? '--' : d.score}}
             </span>
             <span class="rehab-domain-conf">{{d.confidence}}</span>
           </div>
+          <p class="manual-legend">
+            <span class="manual-swatch"></span>
+            No wearable can measure these &mdash; in the live product a person logs them daily.
+            Generated here so a full trajectory can be shown.
+          </p>
         </div>
 
         <div class="rehab-scores" *ngIf="rehabResult?.irq?.irq_score !== undefined">
           <h4>IRQ &mdash; {{rehabResult.irq.irq_score}}</h4>
-          <div class="rehab-domain" *ngFor="let c of irqComponents()">
-            <span class="rehab-domain-key">{{c.key}}</span>
+          <div class="rehab-domain" *ngFor="let c of irqComponents()" [class.manual-source]="c.manual">
+            <span class="rehab-domain-key">
+              {{c.label}}
+              <span class="manual-badge" *ngIf="c.manual">human input</span>
+            </span>
             <span class="rehab-domain-score">{{c.value}}</span>
+          </div>
+          <p class="manual-legend">
+            <span class="manual-swatch"></span>
+            No wearable can measure these &mdash; craving comes from a daily check-in, sobriety from
+            a logged relapse or programme start.
+          </p>
+        </div>
+      </div>
+
+
+      <!-- Reset, for starting a demo from a known state -->
+      <div class="form-section cleanup-section">
+        <label>Start from a clean slate</label>
+        <p class="cleanup-help">
+          Deletes every device reading, rehab score and recovery record the simulator has
+          written for <strong>{{selectedProfile.full_name || 'this person'}}</strong>.
+          Medication, ILQ and disease-risk data are left untouched.
+        </p>
+
+        <button
+          type="button"
+          class="cleanup-btn"
+          *ngIf="!cleanupArmed"
+          (click)="armCleanup()"
+          [disabled]="cleaningUp || !selectedElderlyPersonId"
+        >
+          <span *ngIf="!cleaningUp">Clear this person's data</span>
+          <span *ngIf="cleaningUp">Clearing...</span>
+        </button>
+
+        <div class="cleanup-confirm" *ngIf="cleanupArmed">
+          <span>This cannot be undone. Delete everything for this person?</span>
+          <div class="cleanup-actions">
+            <button type="button" class="cleanup-btn danger" (click)="confirmCleanup()">Yes, delete it</button>
+            <button type="button" class="selection-btn" (click)="cancelCleanup()">Cancel</button>
+          </div>
+        </div>
+
+        <div class="generated-data" *ngIf="cleanupMessage">
+          <div class="message" [class.success]="!cleanupError" [class.error]="cleanupError">
+            {{cleanupMessage}}
           </div>
         </div>
       </div>
