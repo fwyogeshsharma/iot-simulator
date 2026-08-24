@@ -432,30 +432,38 @@
       <div class="form-section">
         <label>Trajectory</label>
         <select [(ngModel)]="rehabTrajectory" name="rehabTrajectory" class="disease-select">
-          <option value="improvement">Improvement &mdash; pain decreases, adherence increases, sobriety increases</option>
-          <option value="degradation">Degradation &mdash; pain increases, adherence decreases, sobriety resets (relapse)</option>
+          <option value="improvement">Improvement &mdash; craving falls, clean-day streak unbroken</option>
+          <option value="degradation">Degradation &mdash; craving rises, sobriety resets (relapse)</option>
         </select>
       </div>
 
       <div class="rehab-row">
         <div class="rehab-field">
           <label>Program length (days)</label>
-          <input type="number" [(ngModel)]="rehabDays" name="rehabDays" [min]="rehabMinDays" max="365" class="rehab-input" />
+          <input type="number" [(ngModel)]="rehabDays" name="rehabDays" min="1" max="365" class="rehab-input" />
         </div>
+        <!-- PHYSIOTHERAPY REHAB - INACTIVE. The baseline window is only read by the physical
+             rehabilitation scoring, which is not surfaced in SymBIoT (see Health.tsx, commit
+             5ca3133). It has no effect on the IRQ, so the input is hidden rather than left as a
+             control that changes nothing. rehabBaselineDays keeps its default of 14 in the
+             component and is still sent, so restoring this block needs no other change.
         <div class="rehab-field">
           <label>Baseline window (days)</label>
           <input type="number" [(ngModel)]="rehabBaselineDays" name="rehabBaselineDays" min="3" max="30" class="rehab-input" />
         </div>
+        -->
       </div>
 
-      <!-- The scoring functions skip every domain while the baseline and recent windows would
-           overlap, so warn before the request rather than after it comes back unscored. -->
+      <!-- PHYSIOTHERAPY REHAB - INACTIVE. Guarded against the baseline and recent windows
+           overlapping, which only mattered while rehab domains were scored.
       <div class="form-section info-message" *ngIf="rehabDays < rehabMinDays">
         <p>
           A {{rehabBaselineDays}}-day baseline needs a program of at least {{rehabMinDays}} days.
           Below that the baseline and recent windows overlap and nothing is scored.
         </p>
       </div>
+      -->
+
 
       <div class="form-section rehab-checkbox">
         <label>
@@ -486,6 +494,11 @@
 
         <div class="rehab-warning" *ngIf="rehabWarning">{{rehabWarning}}</div>
 
+        <!-- PHYSIOTHERAPY REHAB - INACTIVE. The Rehab Progress card was removed from the
+             platform's health dashboard (Health.tsx, commit 5ca3133), so showing its five
+             domains here would report a score with nowhere to see it. The backend no longer
+             runs the analysis either, so rehabResult.rehab is absent. Restoring this block
+             also needs the rehab steps in RehabDataService.generate() uncommented.
         <div class="rehab-scores" *ngIf="rehabResult?.rehab?.overall_score !== undefined && rehabResult?.rehab?.overall_score !== null">
           <h4>Rehab progress &mdash; overall {{rehabResult.rehab.overall_score}} ({{rehabResult.rehab.overall_trend}})</h4>
           <p class="scale-hint">Change since baseline &mdash; 50 is no change, 100 is the most improvement expected, 0 the most decline.</p>
@@ -506,6 +519,8 @@
             Generated here so a full trajectory can be shown.
           </p>
         </div>
+        -->
+
 
         <div class="rehab-scores" *ngIf="rehabResult?.irq?.irq_score !== undefined">
           <h4>IRQ &mdash; {{rehabResult.irq.irq_score}}</h4>

@@ -1042,9 +1042,10 @@ export class AppComponent implements OnInit, OnDestroy {
       next: (res) => {
         this.generatingRehab = false;
         this.rehabResult = res;
-        const parts = [
-          `${res.manualCheckinsWritten} rehab check-in(s)`,
-        ];
+        // PHYSIOTHERAPY REHAB - INACTIVE: `${res.manualCheckinsWritten} rehab check-in(s)`
+        // was the first entry here. The backend no longer writes those check-ins, so listing
+        // them would report a count of zero for something nothing reads.
+        const parts: string[] = [];
         if (res.recoveryCheckinsWritten) {
           parts.push(`${res.recoveryCheckinsWritten} craving check-in(s)`);
           parts.push(`${res.sobrietyEventsWritten} sobriety event(s)`);
@@ -1055,18 +1056,22 @@ export class AppComponent implements OnInit, OnDestroy {
         if (res.irqHistoryWritten) {
           parts.push(`${res.irqHistoryWritten} day(s) of IRQ history`);
         }
-        this.rehabMessage =
-          `Generated a ${res.trajectory} trajectory from ${res.programStartDate}: ` +
-          parts.join(', ') + '.';
+        // With the rehab check-ins no longer listed, unticking both boxes leaves nothing to
+        // report - say so rather than trailing off after the colon.
+        const article = /^[aeiou]/i.test(res.trajectory || '') ? 'an' : 'a';
+        this.rehabMessage = parts.length
+          ? `Generated ${article} ${res.trajectory} trajectory from ${res.programStartDate}: ` +
+            parts.join(', ') + '.'
+          : `Nothing was generated. Tick at least one of the two boxes above and try again.`;
 
-        // Without this the device domains silently keep whatever the previous run left
-        // behind, so a degrading trajectory can still show four improving domains.
+        // Without this the device-derived components silently keep whatever the previous run
+        // left behind, so a degrading trajectory can still show them improving.
         if (!res.deviceRowsWritten) {
           this.rehabWarning = res.deviceMetricsSkipped
-            ? `Device metrics were skipped: ${res.deviceMetricsSkipped}. Mobility, cardiovascular, ` +
-              `body composition and sleep still show the previous run's data.`
-            : `Device metrics were not generated, so mobility, cardiovascular, body composition and ` +
-              `sleep still show the previous run's data. Tick "Move device metrics along the ` +
+            ? `Device metrics were skipped: ${res.deviceMetricsSkipped}. Physiological stress and ` +
+              `activity & routine still reflect the previous run's data.`
+            : `Device metrics were not generated, so physiological stress and activity & routine ` +
+              `still reflect the previous run's data. Tick "Move device metrics along the ` +
               `trajectory" and generate again.`;
         }
       },

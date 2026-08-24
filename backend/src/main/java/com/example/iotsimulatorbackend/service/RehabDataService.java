@@ -101,16 +101,17 @@ public class RehabDataService {
         int baselineDays = Math.max(3, Math.min(30, request.getBaselineWindowDays()));
         int days = request.getDays();
 
+        // PHYSIOTHERAPY REHAB - INACTIVE. This guard existed only because
         // compute_rehab_progress_for_person refuses to score while the baseline and recent
-        // windows would overlap, reporting every domain as insufficient_data instead. Fail here
-        // with the actual numbers rather than let the caller wonder why nothing scored.
-        if (days < baselineDays * 2) {
-            throw new IllegalArgumentException(String.format(
-                    "days must be at least twice baselineWindowDays: %d days with a %d-day baseline "
-                            + "needs at least %d. Below that every domain is skipped as "
-                            + "'Baseline period in progress'.",
-                    days, baselineDays, baselineDays * 2));
-        }
+        // windows overlap. Nothing scores those domains now, and the IRQ does not read the
+        // baseline window at all, so a short run is no longer a problem worth rejecting.
+        // if (days < baselineDays * 2) {
+        //     throw new IllegalArgumentException(String.format(
+        //             "days must be at least twice baselineWindowDays: %d days with a %d-day baseline "
+        //                     + "needs at least %d. Below that every domain is skipped as "
+        //                     + "'Baseline period in progress'.",
+        //             days, baselineDays, baselineDays * 2));
+        // }
 
         boolean degrading = request.isDegradation();
         LocalDate today = LocalDate.now();
@@ -126,18 +127,24 @@ public class RehabDataService {
         result.put("baselineWindowDays", baselineDays);
         result.put("days", days);
 
+        // PHYSIOTHERAPY REHAB - INACTIVE (steps 1 and 2). The Rehab Progress card was removed
+        // from the platform's health dashboard (Health.tsx, commit 5ca3133), so the enrollment
+        // and the pain/adherence check-ins feed a score nobody can see. The IRQ reads neither:
+        // it needs recovery_checkins, recovery_sobriety_events and device_data only.
+        //
         // 1. Enrollment. The partial unique index allows only one active row per person, so an
         //    existing one has to be retired before the new one goes in.
-        int removed = deleteExistingEnrollments(request.getElderlyPersonId());
-        createEnrollment(request, programStart, baselineDays);
-        result.put("enrollmentsReplaced", removed);
+        // int removed = deleteExistingEnrollments(request.getElderlyPersonId());
+        // createEnrollment(request, programStart, baselineDays);
+        // result.put("enrollmentsReplaced", removed);
 
         // 2. Manual check-ins - the only rehab domain that is not device-derived.
-        int checkins = writeManualCheckins(request.getElderlyPersonId(), programStart, days, degrading);
-        result.put("manualCheckinsWritten", checkins);
+        // int checkins = writeManualCheckins(request.getElderlyPersonId(), programStart, days, degrading);
+        // result.put("manualCheckinsWritten", checkins);
 
-        // 3. Device-derived domains. Without this only the manual domain responds, and a
-        //    degrading run still averages out as "stable".
+        // 3. Device metrics. Still required: physiological stress and activity & routine are
+        //    two of the four IRQ components, and backfillIrqScores reads the same per-day
+        //    figures. Do not comment this out with the rehab steps above.
         Map<LocalDate, Map<String, Double>> metricsByDay = new LinkedHashMap<>();
         if (request.isIncludeDeviceMetrics()) {
             result.put("deviceRowsWritten", writeDeviceTrajectory(
@@ -159,14 +166,17 @@ public class RehabDataService {
                     programStart, today, degrading, cravingByDay, metricsByDay));
         }
 
+        // PHYSIOTHERAPY REHAB - INACTIVE (step 5). The once-per-day guard and the analysis run
+        // both belong to rehab progress scoring, which nothing displays now.
+        //
         // 5. run_rehab_progress_analysis is guarded to once per calendar day per person. Without
         //    clearing that row, data generated after today's run would not be scored until
         //    tomorrow - which looks exactly like the generator having done nothing.
-        clearAnalysisGuard(request.getElderlyPersonId());
-        result.put("analysisGuardCleared", true);
+        // clearAnalysisGuard(request.getElderlyPersonId());
+        // result.put("analysisGuardCleared", true);
 
         if (request.isScoreAfterGenerate()) {
-            result.put("rehab", runRehabAnalysis(request.getElderlyPersonId()));
+            // result.put("rehab", runRehabAnalysis(request.getElderlyPersonId()));
             if (request.isIncludeRecovery()) {
                 result.put("irq", runIrqCompute(request.getElderlyPersonId()));
             }
