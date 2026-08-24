@@ -468,17 +468,17 @@
       <div class="form-section rehab-checkbox">
         <label>
           <input type="checkbox" [(ngModel)]="rehabIncludeRecovery" name="rehabIncludeRecovery" />
-          Also generate IRQ recovery data (craving check-ins + sobriety events)
+          Generate the IRQ recovery signals (craving check-ins + sobriety events)
         </label>
         <label>
           <input type="checkbox" [(ngModel)]="rehabIncludeDeviceMetrics" name="rehabIncludeDeviceMetrics" />
-          Move device metrics along the trajectory (mobility, cardio, body composition, sleep)
+          Move device metrics along the trajectory (physiological stress + activity &amp; routine)
         </label>
       </div>
 
       <button
         (click)="generateRehabData()"
-        [disabled]="generatingRehab || !selectedElderlyPersonId || rehabDays < rehabMinDays"
+        [disabled]="generatingRehab || !selectedElderlyPersonId"
         class="generate-historical-btn"
       >
         <span *ngIf="!generatingRehab">Generate {{rehabTrajectory === 'degradation' ? 'Degradation' : 'Improvement'}} Trajectory</span>
